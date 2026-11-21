@@ -21,6 +21,7 @@ export function useLocationPicker(options: LocationOptionVM[]) {
     rootRef: disclosure.ref,
     isOpen: disclosure.isOpen,
     toggle: disclosure.toggle,
+    close: disclosure.close,
     choose,
     isSaving,
     listId,

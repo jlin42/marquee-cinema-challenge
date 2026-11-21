@@ -108,6 +108,10 @@ const BATCH = 1000;
 const HOLD_SECONDS = 8 * 60;
 
 /** Write the chosen groups as holds, bookings, booking_seats, and booked inventory. */
+// Demo booker names (fictional). Emails use the reserved example.com domain.
+const FIRST_NAMES = ["Avery", "Jordan", "Maya", "Ethan", "Priya", "Lucas", "Grace", "Omar", "Chloe", "Noah", "Sofia", "Isaac", "Hana", "Leo", "Zoe", "Marcus", "Elena", "Ryan", "Nia", "Owen"];
+const LAST_NAMES = ["Carter", "Nguyen", "Patel", "Brooks", "Rivera", "Kim", "Hughes", "Bennett", "Morales", "Foster", "Reyes", "Turner", "Shah", "Coleman", "Ward", "Price", "Hayes", "Ortiz", "Long", "Barnes"];
+
 // Ticket mix for demo bookings: mostly General, some Child and Senior.
 const TICKET_MIX = ["general", "general", "general", "general", "general", "general", "general", "child", "child", "senior"] as const;
 
@@ -153,7 +157,17 @@ export async function insertBookings(
           feeCents: type.feeCents,
         });
       }
-      bookingRows.push({ id: bookingId, showingId: showing.id, holdId, email: `guest${++guest}@example.com`, totalCents, createdAt });
+      const first = random.pick(FIRST_NAMES);
+      const last = random.pick(LAST_NAMES);
+      bookingRows.push({
+        id: bookingId,
+        showingId: showing.id,
+        holdId,
+        customerName: `${first} ${last}`,
+        email: `${first}.${last}${++guest}@example.com`.toLowerCase(),
+        totalCents,
+        createdAt,
+      });
     }
   }
 

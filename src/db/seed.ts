@@ -9,6 +9,7 @@ import { db, pool } from "./client";
 import { films, locations, screens, seats, showings, ticketTypes } from "./schema";
 import { CINEMA_TIME_ZONE, cinemaDate } from "../lib/time";
 import { LAYOUTS, parseLayout, type LayoutName } from "./layouts";
+import { seedStaff } from "./seed-staff";
 import { chooseBookedGroups, createRandom, insertBookings, type SeedSeat, type SeedShowing } from "./seed-bookings";
 
 // Each theater's three screens, by layout (see layouts.ts).
@@ -44,6 +45,14 @@ const LIGHT_OCCUPANCY = [0.25, 0.7] as const;
 const WEEKEND_BONUS = 0.1;
 const RANDOM_SEED = 20261125;
 
+// Most theaters play every film; a few smaller houses skip some (by theater name → film slugs).
+// The blockbuster (featured #1) plays everywhere, since the demo week adds extra showings of it.
+const LINEUP_EXCLUSIONS: Record<string, string[]> = {
+  "Harrisonburg Cinema": ["hollow-pines", "second-chair"],
+  "Williamsburg Cinema": ["hollow-pines"],
+  "Norfolk Cinema": ["the-quiet-frequency"],
+};
+
 /** Convert a wall-clock time in the cinemas' time zone to a UTC instant (handles DST). */
 function cinemaTimeToUtc(date: string, time: string): Date {
   const [y, mo, d] = date.split("-").map(Number) as [number, number, number];
@@ -66,7 +75,8 @@ function* datesBetween(start: string, end: string) {
 async function main() {
   console.log("Clearing existing data…");
   await db.execute(sql`
-    TRUNCATE booking_seats, bookings, showing_seats, holds, showings, films, seats, screens, locations, ticket_types
+    TRUNCATE booking_seats, bookings, showing_seats, holds, showings, films, seats, screens,
+             staff_actions, staff_sessions, staff_users, locations, ticket_types
     RESTART IDENTITY CASCADE
   `);
 
@@ -155,22 +165,87 @@ async function main() {
         featuredRank: 3,
       },
       {
-        slug: "midnight-at-the-marquee",
-        title: "Midnight at the Marquee",
+        slug: "one-seat-left",
+        title: "One Seat Left",
         runtimeMinutes: 104,
         rating: "R",
         genre: "Thriller",
         tagline: "The late show has one seat left. Yours.",
         synopsis:
           "Locked in an old cinema after the midnight screening, five strangers realize the film on screen is showing what happens next.",
-        backdropUrl: "/films/midnight-at-the-marquee.svg",
+        backdropUrl: "/films/one-seat-left.svg",
         featuredRank: 4,
+      },
+      {
+        slug: "saltwater-kings",
+        title: "Saltwater Kings",
+        runtimeMinutes: 124,
+        rating: "PG-13",
+        genre: "Adventure",
+        tagline: "The bay gives. The bay takes back.",
+        synopsis:
+          "Two estranged brothers inherit their father's failing oyster boat and one summer to save it, racing a storm, a rival crew and each other across the bay.",
+        backdropUrl: "/films/saltwater-kings.svg",
+        featuredRank: 5,
+      },
+      {
+        slug: "the-quiet-frequency",
+        title: "The Quiet Frequency",
+        runtimeMinutes: 109,
+        rating: "PG-13",
+        genre: "Mystery",
+        tagline: "Tonight's caller already knows tomorrow.",
+        synopsis:
+          "A late-night radio host starts taking calls from a listener who describes tomorrow's headlines in perfect detail — including one about the host.",
+        backdropUrl: "/films/the-quiet-frequency.svg",
+        featuredRank: null,
+      },
+      {
+        slug: "hollow-pines",
+        title: "Hollow Pines",
+        runtimeMinutes: 98,
+        rating: "R",
+        genre: "Horror",
+        tagline: "Every night, the trees lean closer.",
+        synopsis:
+          "A family's fresh start in a mountain cabin unravels when they notice the forest around it moves a little nearer each morning.",
+        backdropUrl: "/films/hollow-pines.svg",
+        featuredRank: null,
+      },
+      {
+        slug: "second-chair",
+        title: "Second Chair",
+        runtimeMinutes: 101,
+        rating: "PG-13",
+        genre: "Comedy",
+        tagline: "Always the runner-up. Not this time.",
+        synopsis:
+          "A violinist who has played second chair for twenty years enters a regional competition — and finds herself up against the student she once taught.",
+        backdropUrl: "/films/second-chair.svg",
+        featuredRank: null,
+      },
+      {
+        slug: "ember-and-frost",
+        title: "Ember & Frost",
+        runtimeMinutes: 92,
+        rating: "PG",
+        genre: "Animation",
+        tagline: "Opposites thaw.",
+        synopsis:
+          "A runaway fire sprite and a stubborn snow spirit must cross the mountains together before the turning of the season traps them both.",
+        backdropUrl: "/films/ember-and-frost.svg",
+        featuredRank: null,
       },
     ])
     .returning();
 
   // Screens grouped by theater, so films can rotate by theater, screen, time and day.
   const screensByLocation = insertedLocations.map((loc) => insertedScreens.filter((sc) => sc.locationId === loc.id));
+  // Each theater's lineup: every film, minus that theater's exclusions.
+  const lineups = insertedLocations.map((loc) => {
+    const skip = LINEUP_EXCLUSIONS[loc.name] ?? [];
+    return insertedFilms.filter((f) => !f.slug || !skip.includes(f.slug));
+  });
   const showingRows: { screenId: string; filmId: string; startsAt: Date }[] = [];
   let dayIndex = 0;
   for (const date of datesBetween(SCHEDULE_START, SCHEDULE_END)) {
@@ -180,7 +255,9 @@ async function main() {
         const times = [...(SCREEN_SHOWTIMES[s] ?? SCREEN_SHOWTIMES[0]!)];
         if (s === LATE_SHOW.screen && LATE_SHOW.weekdays.includes(weekday)) times.push(LATE_SHOW.time);
         times.forEach((time, t) => {
-          const film = insertedFilms[(l + s * 2 + t + dayIndex) % insertedFilms.length]!;
+          const lineup = lineups[l]!;
+          // 12+ slots a day cover the whole lineup, so every film plays daily; the start rotates by day.
+          const film = lineup[(l + s * SCREEN_SHOWTIMES[0]!.length + t + dayIndex) % lineup.length]!;
           showingRows.push({ screenId: screen.id, filmId: film.id, startsAt: cinemaTimeToUtc(date, time) });
         });
         // Demo week: extra showings of the blockbuster (featured film #1).
@@ -216,6 +293,22 @@ async function main() {
     `Seeded ${insertedLocations.length} locations, ${insertedScreens.length} screens, ` +
       `${insertedFilms.length} films, ${showingRows.length} showings, ${count} showing seats, ` +
       `${booked} booked seats.`,
+  );
+
+  console.log("Creating staff accounts and their action history…");
+  const staff = await seedStaff(createRandom(RANDOM_SEED + 1));
+  console.log(
+    `Seeded staff: ${staff.counts.admin} admins, ${staff.counts.privileged} privileged, ` +
+      `${staff.counts.viewer} viewers, ${staff.actions} logged actions.`,
+  );
+  console.log(
+    `\nStaff sign-in at /staff as "${staff.adminUsername}"` +
+      (staff.adminPassword ? ` with password: ${staff.adminPassword}` : " (password from .env)"),
+  );
+  console.log(
+    "Other staff accounts use " +
+      (staff.demoPassword ? `the password: ${staff.demoPassword}` : "STAFF_DEMO_PASSWORD from .env") +
+      " (usernames are on the Admin tab).",
   );
 }
 

@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { focusRing } from "@/components/ui/icon-button";
 import { LocationPicker } from "@/features/location/location-picker";
+import { MobileMenu } from "@/features/location/mobile-menu";
 import { getLocationPickerViewModel } from "@/features/location/location-view-model";
 
 /**
  * Top bar: logo on the left; theater picker and Movies on the right.
  * `overlay` floats it over a full-screen hero; otherwise it's a sticky bar.
  * `showLocationPicker={false}` hides the picker where the theater is fixed (booking).
+ * Below the `sm` breakpoint the right side collapses into a menu (MobileMenu).
  */
 export async function SiteHeader({
   overlay = false,
@@ -30,7 +32,10 @@ export async function SiteHeader({
           Marquee<span className="text-marquee-400">.</span>
         </Link>
 
-        <nav aria-label="Main" className="flex min-w-0 items-center gap-1 sm:gap-4">
+        {/* Phones: theater and Movies fold into one menu button. */}
+        <MobileMenu picker={picker} />
+
+        <nav aria-label="Main" className="hidden min-w-0 items-center gap-4 sm:flex">
           {picker && <LocationPicker vm={picker} />}
           <Link
             href="/movies"

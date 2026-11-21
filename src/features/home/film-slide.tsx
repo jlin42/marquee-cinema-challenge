@@ -11,7 +11,7 @@ export function FilmSlide({ slide, position, total, isActive }: { slide: FilmSli
       aria-label={`${position} of ${total}: ${slide.title}`}
       aria-hidden={!isActive}
       inert={!isActive}
-      className={`absolute inset-0 transition-opacity duration-1000 ease-out ${isActive ? "opacity-100" : "pointer-events-none opacity-0"}`}
+      className={`absolute inset-0 transition-opacity duration-[1200ms] ease-in-out motion-reduce:duration-300 ${isActive ? "opacity-100" : "pointer-events-none opacity-0"}`}
     >
       {slide.backdropUrl && (
         // eslint-disable-next-line @next/next/no-img-element -- local SVG art; next/image adds nothing here
@@ -27,21 +27,32 @@ export function FilmSlide({ slide, position, total, isActive }: { slide: FilmSli
       <div className="absolute inset-x-0 bottom-0 h-2/3 bg-linear-to-t from-black via-black/60 to-transparent" />
 
       <div className="relative flex h-full flex-col justify-end px-6 pb-32 sm:px-12 lg:px-20">
-        <div className="max-w-2xl">
+        {/*
+          Text leaves quickly as the backdrop starts to change, and the new film's text
+          comes in half a second later, once the new backdrop is mostly in.
+        */}
+        <div
+          className={`max-w-2xl transition-[opacity,transform] motion-reduce:translate-y-0 ${
+            isActive
+              ? "translate-y-0 opacity-100 delay-500 duration-700 ease-out"
+              : "translate-y-3 opacity-0 delay-0 duration-300 ease-in"
+          }`}
+        >
           <MetaLine items={slide.meta} />
-          <h2 className="font-display text-7xl leading-[0.9] tracking-wide text-white sm:text-8xl lg:text-9xl">{slide.title}</h2>
+          <h2 className="font-display text-6xl leading-[0.9] tracking-wide text-white sm:text-8xl lg:text-9xl">{slide.title}</h2>
           {slide.tagline && <p className="mt-4 text-lg font-medium text-marquee-400 sm:text-xl">{slide.tagline}</p>}
-          {slide.synopsis && <p className="mt-3 max-w-xl text-base leading-relaxed text-neutral-300">{slide.synopsis}</p>}
+          {slide.synopsis && <p className="mt-3 line-clamp-3 max-w-xl text-base leading-relaxed text-neutral-300 sm:line-clamp-none">{slide.synopsis}</p>}
 
           {slide.showtimes.length > 0 ? (
             <div className="mt-6">
               <p className="mb-2 text-xs font-medium uppercase tracking-widest text-neutral-400">Next showtimes</p>
-              <ul className="flex flex-wrap gap-2">
+              {/* Stacked on phones (full-width rows, first three), a wrapping row from sm up. */}
+              <ul className="flex flex-col gap-2 sm:flex-row sm:flex-wrap [&>li:nth-child(n+4)]:hidden sm:[&>li:nth-child(n+4)]:block">
                 {slide.showtimes.map((s) => (
                   <li key={s.id}>
                     <Link
                       href={s.href}
-                      className={`flex flex-col rounded-md border border-white/20 bg-white/5 px-3 py-2 text-left backdrop-blur-sm transition hover:border-marquee-400 hover:bg-white/10 ${focusRing}`}
+                      className={`flex items-baseline justify-between gap-3 rounded-md border border-white/20 bg-white/5 px-3 py-2 text-left backdrop-blur-sm transition hover:border-marquee-400 hover:bg-white/10 sm:flex-col sm:items-start sm:gap-0 ${focusRing}`}
                     >
                       <span className="text-sm font-medium text-white">{s.title}</span>
                       <span className="text-xs text-neutral-400">{s.subtitle}</span>
@@ -49,14 +60,6 @@ export function FilmSlide({ slide, position, total, isActive }: { slide: FilmSli
                   </li>
                 ))}
               </ul>
-              {slide.ticketsHref && (
-                <Link
-                  href={slide.ticketsHref}
-                  className={`mt-6 inline-flex items-center rounded-md bg-marquee-500 px-6 py-3 text-sm font-semibold text-neutral-950 transition hover:bg-marquee-400 ${focusRing}`}
-                >
-                  Get tickets
-                </Link>
-              )}
             </div>
           ) : (
             <p className="mt-6 text-sm text-neutral-400">No upcoming showtimes.</p>

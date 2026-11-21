@@ -1,4 +1,6 @@
 import {
+  boolean,
+  jsonb,
   pgTable,
   pgEnum,
   uuid,
@@ -9,6 +11,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ---------- Venue ----------
 
@@ -110,6 +113,8 @@ export const holds = pgTable("holds", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const bookingStatus = pgEnum("booking_status", ["active", "cancelled"]);
+
 export const bookings = pgTable("bookings", {
   id: uuid("id").primaryKey().defaultRandom(),
   showingId: uuid("showing_id")
@@ -122,8 +127,13 @@ export const bookings = pgTable("bookings", {
     .unique()
     .references(() => holds.id),
   email: text("email").notNull(),
+  // Name of the main ticket booker.
+  customerName: text("customer_name"),
   // Total charged (all tickets plus fees), fixed at booking time.
   totalCents: integer("total_cents").notNull().default(0),
+  // Cancelled bookings are kept for history; their seats are released.
+  status: bookingStatus("status").notNull().default("active"),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -152,7 +162,7 @@ export const showingSeats = pgTable(
 );
 
 /**
- * Backstop for the core invariant: a seat can be sold at most once per
+ * Backstop for the core invariant: a seat can have at most one active sale per
  * showing, enforced by the database regardless of application logic.
  */
 export const bookingSeats = pgTable(
@@ -171,6 +181,86 @@ export const bookingSeats = pgTable(
     ticketType: ticketType("ticket_type").notNull().default("general"),
     priceCents: integer("price_cents").notNull().default(0),
     feeCents: integer("fee_cents").notNull().default(0),
+    // Set when the seat is given up (booking cancelled or moved); the row stays as history.
+    releasedAt: timestamp("released_at", { withTimezone: true }),
   },
-  (t) => [uniqueIndex("booking_seats_showing_seat_uq").on(t.showingId, t.seatId)],
+  // Backstop: at most one *active* sale per seat per showing. Released rows don't count,
+  // so a cancelled or moved seat can be sold again.
+  (t) => [
+    uniqueIndex("booking_seats_active_showing_seat_uq")
+      .on(t.showingId, t.seatId)
+      .where(sql`${t.releasedAt} IS NULL`),
+  ],
+);
+
+// ---------- Staff ----------
+
+export const staffRole = pgEnum("staff_role", ["admin", "privileged", "viewer"]);
+
+/** Staff accounts for the /staff site. Passwords are stored only as scrypt hashes. */
+export const staffUsers = pgTable(
+  "staff_users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Sign-in name, e.g. "JerryAdmin". Unique regardless of letter case.
+    username: text("username").notNull(),
+    name: text("name").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    role: staffRole("role").notNull().default("viewer"),
+    // Deactivated accounts can't sign in; their sessions are revoked.
+    isActive: boolean("is_active").notNull().default(true),
+    // Lockout after repeated failed logins.
+    failedAttempts: integer("failed_attempts").notNull().default(0),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("staff_users_username_ci_uq").on(sql`lower(${t.username})`)],
+);
+
+/**
+ * Server-side staff sessions. The cookie holds a random token; only its SHA-256
+ * hash is stored, so a database leak doesn't expose usable session tokens.
+ */
+export const staffSessions = pgTable(
+  "staff_sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    staffUserId: uuid("staff_user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("staff_sessions_user_idx").on(t.staffUserId)],
+);
+
+// ---------- Audit log ----------
+
+export const staffActionType = pgEnum("staff_action_type", [
+  "booking.cancel",
+  "booking.move",
+  "staff.role_change",
+  "staff.deactivate",
+  "staff.activate",
+]);
+
+/** Every write action taken by a staff member: who, what, when, and the details. Append-only. */
+export const staffActions = pgTable(
+  "staff_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    staffUserId: uuid("staff_user_id")
+      .notNull()
+      .references(() => staffUsers.id),
+    action: staffActionType("action").notNull(),
+    bookingId: uuid("booking_id").references(() => bookings.id),
+    targetStaffUserId: uuid("target_staff_user_id").references(() => staffUsers.id),
+    summary: text("summary").notNull(), // human-readable, e.g. "Cancelled booking 3F9A21C0 (Maya Carter, 2 seats)"
+    details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("staff_actions_user_created_idx").on(t.staffUserId, t.createdAt),
+    index("staff_actions_created_idx").on(t.createdAt),
+  ],
 );

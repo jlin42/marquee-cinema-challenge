@@ -179,15 +179,19 @@ export function useSeatBooking({
     void refresh();
   }, [refresh]);
 
-  const confirm = async (email: string) => {
+  const confirm = async (name: string, email: string) => {
     if (!hold || isBusy) return;
+    if (!name.trim()) {
+      setNotice({ tone: "error", text: "Enter the name of the person booking." });
+      return;
+    }
     if (!EMAIL_PATTERN.test(email.trim())) {
       setNotice({ tone: "error", text: "Enter a valid email address for your tickets." });
       return;
     }
     setIsBusy(true);
     setNotice(null);
-    const res = await bookingApi.confirm(hold.id, email.trim(), Object.fromEntries(tickets));
+    const res = await bookingApi.confirm(hold.id, { name: name.trim(), email: email.trim() }, Object.fromEntries(tickets));
     setIsBusy(false);
 
     if (res.ok) {

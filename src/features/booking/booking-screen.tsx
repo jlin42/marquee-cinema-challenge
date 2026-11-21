@@ -42,6 +42,7 @@ export function BookingScreen({ vm }: { vm: BookingVM }) {
         ) : booking.phase === "confirmed" && booking.booking ? (
           <BookingConfirmation
             reference={booking.booking.id.slice(0, 8).toUpperCase()}
+            name={booking.booking.customerName}
             email={booking.booking.email}
             lines={booking.paidLines}
             total={booking.paidTotal ?? ""}

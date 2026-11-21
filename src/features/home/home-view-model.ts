@@ -12,7 +12,6 @@ export type FilmSlideVM = {
   synopsis: string | null;
   backdropUrl: string | null;
   showtimes: ShowtimeLinkVM[];
-  ticketsHref: string | null;
 };
 
 export type HomeVM = { slides: FilmSlideVM[] };
@@ -39,6 +38,5 @@ function toSlide(film: FeaturedFilm): FilmSlideVM {
     synopsis: film.synopsis,
     backdropUrl: film.backdropUrl,
     showtimes,
-    ticketsHref: showtimes[0]?.href ?? null,
   };
 }

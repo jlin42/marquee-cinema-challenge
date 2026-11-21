@@ -10,6 +10,7 @@ export type TicketCode = "general" | "child" | "senior";
 export type ApiBooking = {
   id: string;
   email: string;
+  customerName: string | null;
   seatIds: string[];
   tickets: { seatId: string; ticketType: TicketCode; priceCents: number; feeCents: number }[];
   totalCents: number;
@@ -49,9 +50,9 @@ export const bookingApi = {
   release: (holdId: string) => request<void>(`/api/holds/${holdId}`, { method: "DELETE" }),
 
   /** `tickets` maps seat id → ticket type; the server sets the prices. */
-  confirm: (holdId: string, email: string, tickets: Record<string, TicketCode>) =>
+  confirm: (holdId: string, booker: { name: string; email: string }, tickets: Record<string, TicketCode>) =>
     request<{ booking: ApiBooking }>(`/api/holds/${holdId}/confirm`, {
       method: "POST",
-      body: JSON.stringify({ email, tickets }),
+      body: JSON.stringify({ ...booker, tickets }),
     }),
 };

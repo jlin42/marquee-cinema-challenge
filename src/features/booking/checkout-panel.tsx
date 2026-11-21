@@ -20,17 +20,18 @@ export function CheckoutPanel({
   total: string;
   expiresAt: string;
   isBusy: boolean;
-  onConfirm: (email: string) => void;
+  onConfirm: (name: string, email: string) => void;
   onChangeSeats: () => void;
   onExpired: () => void;
 }) {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const countdown = useCountdown(expiresAt, onExpired);
   const isUrgent = countdown.remaining != null && countdown.remaining <= 60;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    onConfirm(email);
+    onConfirm(name, email);
   };
 
   return (
@@ -61,6 +62,19 @@ export function CheckoutPanel({
       <p className="mt-4 text-sm text-neutral-400">These seats are held for you until the timer runs out.</p>
 
       <form onSubmit={submit} className="mt-6 flex flex-col gap-4" noValidate>
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="font-medium text-neutral-200">Full name</span>
+          <input
+            type="text"
+            autoComplete="name"
+            required
+            maxLength={120}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Jane Smith"
+            className="rounded-lg border border-white/15 bg-neutral-950 px-3 py-2.5 text-white placeholder:text-neutral-600 focus:border-marquee-400 focus:outline-none"
+          />
+        </label>
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="font-medium text-neutral-200">Email for your tickets</span>
           <input

@@ -16,7 +16,7 @@
  * Holds expire lazily: an expired hold is treated as available inside the
  * queries themselves, so correctness never depends on a cleanup job.
  */
-import { and, asc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db/client";
 import { bookings, bookingSeats, holds, seats, showings, showingSeats } from "@/db/schema";
 import { env } from "@/env";
@@ -142,6 +142,8 @@ export async function confirmHold(input: {
   holdId: string;
   sessionId: string;
   email: string;
+  /** Main ticket booker's name. */
+  customerName?: string;
   tickets?: Partial<Record<string, TicketTypeCode>>;
 }): Promise<Booking> {
   try {
@@ -171,7 +173,13 @@ export async function confirmHold(input: {
 
       const [booking] = await tx
         .insert(bookings)
-        .values({ showingId: hold.showingId, holdId: hold.id, email: input.email, totalCents: priced.totalCents })
+        .values({
+          showingId: hold.showingId,
+          holdId: hold.id,
+          email: input.email,
+          customerName: input.customerName ?? null,
+          totalCents: priced.totalCents,
+        })
         .returning();
       if (!booking) throw new Error("Failed to create booking");
 
@@ -273,7 +281,7 @@ async function findBookingByHold(conn: Tx, holdId: string): Promise<Booking | nu
       feeCents: bookingSeats.feeCents,
     })
     .from(bookingSeats)
-    .where(eq(bookingSeats.bookingId, booking.id))
+    .where(and(eq(bookingSeats.bookingId, booking.id), isNull(bookingSeats.releasedAt)))
     .orderBy(asc(bookingSeats.seatId));
   return { ...booking, seatIds: tickets.map((t) => t.seatId), tickets };
 }

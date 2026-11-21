@@ -5,6 +5,7 @@ import { TICKET_TYPE_CODES } from "@/server/pricing";
 import { getOrCreateSessionId } from "@/server/session";
 
 const Body = z.object({
+  name: z.string().trim().min(1).max(120),
   email: z.email().max(254),
   /** seat id → ticket type; seats left out are General. Prices are set by the server. */
   tickets: z.record(Uuid, z.enum(TICKET_TYPE_CODES)).optional(),
@@ -16,8 +17,8 @@ const Body = z.object({
  */
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const holdId = Uuid.parse((await ctx.params).id);
-  const { email, tickets } = await parseBody(req, Body);
+  const { name, email, tickets } = await parseBody(req, Body);
   const sessionId = await getOrCreateSessionId();
-  const booking = await confirmHold({ holdId, sessionId, email: email.toLowerCase(), tickets });
+  const booking = await confirmHold({ holdId, sessionId, customerName: name, email: email.toLowerCase(), tickets });
   return Response.json({ booking }, { status: 201 });
 });

@@ -29,6 +29,13 @@
       "when": 1795296168501,
       "tag": "0003_young_guardsmen",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795300653795,
+      "tag": "0004_whole_quicksilver",
+      "breakpoints": true
     }
   ]
 }

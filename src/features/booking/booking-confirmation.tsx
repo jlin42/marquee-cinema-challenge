@@ -7,6 +7,7 @@ import type { TicketLineVM } from "./use-seat-booking";
 /** View: booking confirmed. */
 export function BookingConfirmation({
   reference,
+  name,
   email,
   lines,
   total,
@@ -15,6 +16,7 @@ export function BookingConfirmation({
   where,
 }: {
   reference: string;
+  name: string | null;
   email: string;
   lines: TicketLineVM[];
   total: string;
@@ -31,7 +33,7 @@ export function BookingConfirmation({
         You’re booked
       </h2>
       <p className="mt-2 text-sm text-neutral-400">
-        Confirmation sent to <span className="text-neutral-200">{email}</span>
+        {name ? `Thanks, ${name}. ` : ""}Confirmation sent to <span className="text-neutral-200">{email}</span>
       </p>
 
       <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-4 text-left text-sm">
