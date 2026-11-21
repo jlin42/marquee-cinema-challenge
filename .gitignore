@@ -1,0 +1,21 @@
+node_modules/
+.next/
+out/
+build/
+coverage/
+next-env.d.ts
+*.tsbuildinfo
+
+.env
+.env*.local
+!.env.example
+
+.DS_Store
+*.log
+.vercel
+
+# Private engagement notes (not committed)
+notes/
+
+# Claude desktop scratch output
+Claude outputs/
