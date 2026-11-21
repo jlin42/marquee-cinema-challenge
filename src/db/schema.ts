@@ -49,9 +49,17 @@ export const seats = pgTable(
 
 export const films = pgTable("films", {
   id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").unique(),
   title: text("title").notNull(),
   runtimeMinutes: integer("runtime_minutes").notNull(),
   rating: text("rating"),
+  genre: text("genre"),
+  tagline: text("tagline"),
+  synopsis: text("synopsis"),
+  // URL of the wide backdrop image (public/ for the demo; object storage + CDN in production).
+  backdropUrl: text("backdrop_url"),
+  // Position in the home-page carousel; null = not featured.
+  featuredRank: integer("featured_rank"),
 });
 
 export const showings = pgTable(

@@ -1,8 +1,15 @@
-export default function Home() {
+import { SiteHeader } from "@/components/layout/site-header";
+import { FilmCarousel } from "@/features/home/film-carousel";
+import { getHomeViewModel } from "@/features/home/home-view-model";
+
+export const dynamic = "force-dynamic"; // live showtimes
+
+export default async function HomePage() {
+  const vm = await getHomeViewModel();
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <h1 className="text-4xl font-semibold tracking-tight">Marquee Cinemas</h1>
-      <p className="mt-4 text-neutral-400">Online seat booking — coming soon.</p>
+    <main>
+      <SiteHeader overlay />
+      <FilmCarousel slides={vm.slides} />
     </main>
   );
 }

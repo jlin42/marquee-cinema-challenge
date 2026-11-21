@@ -1,15 +1,20 @@
 import type { Metadata } from "next";
+import { Bebas_Neue, Inter } from "next/font/google";
 import "./globals.css";
+
+// Display font for titles and the logo; Inter for everything you read.
+const display = Bebas_Neue({ weight: "400", subsets: ["latin"], variable: "--font-bebas", display: "swap" });
+const sans = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Marquee Cinemas",
-  description: "Book your seats online.",
+  description: "See what's showing and book your seats online.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">{children}</body>
+    <html lang="en" className={`${display.variable} ${sans.variable} dark`}>
+      <body className="min-h-screen bg-neutral-950 font-sans text-neutral-100 antialiased">{children}</body>
     </html>
   );
 }

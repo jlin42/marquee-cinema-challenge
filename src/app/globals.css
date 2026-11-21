@@ -1,1 +1,26 @@
 @import "tailwindcss";
+
+/* Fonts from next/font (see layout.tsx): `font-sans` = Inter, `font-display` = Bebas Neue. */
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bebas), "Impact", ui-sans-serif, sans-serif;
+}
+
+/* Marquee brand accent: warm bulb gold. */
+@theme {
+  --color-marquee-400: #ffcf6e;
+  --color-marquee-500: #f5b83d;
+  --color-marquee-600: #d99a1e;
+}
+
+/* Carousel progress bar (film-carousel.tsx) */
+@keyframes carousel-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Date strip page change (date-strip.tsx): fade only, so no date is ever shown cut off. */
+@keyframes date-page-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
