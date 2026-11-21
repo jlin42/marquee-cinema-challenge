@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DateStrip } from "./date-strip";
+import { DateStrip } from "@/components/date-strip/date-strip";
 import { FilmCard } from "./film-card";
 import type { MoviesVM } from "./movies-view-model";
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { paginateByMonth } from "@/features/movies/paginate-dates";
+import { paginateByMonth } from "@/components/date-strip/paginate-dates";
 
 const days = (month: string, n: number) => Array.from({ length: n }, (_, i) => ({ monthLabel: month, day: i + 1 }));
 const sizes = (pages: { items: unknown[] }[]) => pages.map((p) => p.items.length);

@@ -52,3 +52,10 @@ export function isUniqueViolation(err: unknown): boolean {
   }
   return false;
 }
+
+/** Ticket choices don't match the hold's seats, or name an unknown ticket type. 400 */
+export class InvalidTicketsError extends BookingError {
+  constructor() {
+    super("Those ticket choices don't match your seats. Please try again.", 400, "INVALID_TICKETS");
+  }
+}

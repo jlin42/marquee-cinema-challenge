@@ -1,19 +1,9 @@
 import { listFilmsShowingOn, listShowDates, type FilmWithShowtimes } from "@/server/films";
 import { getSelectedLocation, listLocations } from "@/server/locations";
 import { cinemaDateFromToday, dateParts, formatTime } from "@/lib/time";
+import { toDateChips, type DateChipVM } from "@/components/date-strip/date-chips";
 
 const FEW_SEATS = 15;
-
-export type DateChipVM = {
-  date: string;
-  href: string;
-  day: string;
-  weekday: string;
-  ariaLabel: string;
-  isSelected: boolean;
-  /** Month tab label, e.g. "DEC". The strip never mixes two months on one page. */
-  monthLabel: string;
-};
 
 export type ShowtimeVM = {
   id: string;
@@ -52,7 +42,7 @@ export async function getMoviesViewModel(requestedDate?: string): Promise<Movies
   const nextDate = showDates[showDates.indexOf(date) + 1];
   return {
     subtitle: location ? { name: location.name, city: location.city } : null,
-    dates: toDateChips(showDates, date),
+    dates: toDateChips(showDates, date, (d) => dateHref(d, showDates)),
     selectedDateLabel,
     films: films.map(toFilmCard),
     empty:
@@ -66,21 +56,6 @@ export async function getMoviesViewModel(requestedDate?: string): Promise<Movies
 }
 
 const dateHref = (date: string, all: string[]) => (date === all[0] ? "/movies" : `/movies?date=${date}`);
-
-function toDateChips(dates: string[], selected: string): DateChipVM[] {
-  return dates.map((date) => {
-    const parts = dateParts(date);
-    return {
-      date,
-      href: dateHref(date, dates),
-      day: parts.day,
-      weekday: parts.weekday,
-      ariaLabel: parts.long,
-      isSelected: date === selected,
-      monthLabel: parts.monthShort.toUpperCase(),
-    };
-  });
-}
 
 function toFilmCard(film: FilmWithShowtimes): FilmCardVM {
   const showtimes = film.showtimes.map(toShowtime);

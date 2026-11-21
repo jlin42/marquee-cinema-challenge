@@ -6,21 +6,13 @@
 import "dotenv/config";
 import { sql } from "drizzle-orm";
 import { db, pool } from "./client";
-import { films, locations, screens, seats, showings } from "./schema";
-import { CINEMA_TIME_ZONE } from "../lib/time";
+import { films, locations, screens, seats, showings, ticketTypes } from "./schema";
+import { CINEMA_TIME_ZONE, cinemaDate } from "../lib/time";
+import { LAYOUTS, parseLayout, type LayoutName } from "./layouts";
+import { chooseBookedGroups, createRandom, insertBookings, type SeedSeat, type SeedShowing } from "./seed-bookings";
 
-const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-const SEATS_PER_ROW = 12;
-const AISLE_AFTER = 6; // gap in the seat map between seats 6 and 7
-
-// Accessible seating on the last row (row H, by the entrance): each wheelchair
-// space sits next to a companion seat.
-const ACCESSIBLE: Record<number, "wheelchair" | "companion"> = {
-  1: "wheelchair",
-  2: "companion",
-  11: "companion",
-  12: "wheelchair",
-};
+// Each theater's three screens, by layout (see layouts.ts).
+const SCREEN_LAYOUTS: LayoutName[] = ["large", "standard", "small"];
 
 // Schedule: every day in this range, at every theater (cinema-local dates, inclusive).
 const SCHEDULE_START = "2026-11-01";
@@ -34,6 +26,23 @@ const SCREEN_SHOWTIMES: string[][] = [
   ["12:15", "15:15", "18:15", "21:15"],
 ];
 const LATE_SHOW = { screen: 0, time: "22:45", weekdays: [5, 6] }; // Fri and Sat
+
+// Demo week (the presentation): extra showtimes of the blockbuster, and busy, partly sold-out houses.
+const BUSY_START = "2026-11-25";
+const BUSY_END = "2026-12-01";
+const EXTRA_SHOWTIMES = [
+  { screen: 2, time: "09:30" }, // early show in the small room (ends before its 12:15 show)
+  { screen: 1, time: "23:30" }, // late show in the standard room (after its 8:30 show)
+];
+const EXTRA_TIMES = EXTRA_SHOWTIMES.map((e) => e.time);
+const BUSY_OCCUPANCY = [0.8, 0.99] as const;
+const BUSY_SOLD_OUT_CHANCE = 0.15; // regular showings that week
+const EXTRA_SOLD_OUT_CHANCE = 0.5; // the added blockbuster showings
+// Other dates within two weeks of seeding get lighter, weekend-heavier bookings.
+const LIGHT_WINDOW_DAYS = 14;
+const LIGHT_OCCUPANCY = [0.25, 0.7] as const;
+const WEEKEND_BONUS = 0.1;
+const RANDOM_SEED = 20261125;
 
 /** Convert a wall-clock time in the cinemas' time zone to a UTC instant (handles DST). */
 function cinemaTimeToUtc(date: string, time: string): Date {
@@ -57,21 +66,29 @@ function* datesBetween(start: string, end: string) {
 async function main() {
   console.log("Clearing existing data…");
   await db.execute(sql`
-    TRUNCATE booking_seats, bookings, showing_seats, holds, showings, films, seats, screens, locations
+    TRUNCATE booking_seats, bookings, showing_seats, holds, showings, films, seats, screens, locations, ticket_types
     RESTART IDENTITY CASCADE
   `);
 
+  // Price list (cents). The fee is per ticket.
+  await db.insert(ticketTypes).values([
+    { code: "general", label: "General", description: null, priceCents: 1475, feeCents: 199, sortOrder: 1 },
+    { code: "child", label: "Child", description: "3–11 years", priceCents: 1175, feeCents: 199, sortOrder: 2 },
+    { code: "senior", label: "Senior", description: "60+ years", priceCents: 1125, feeCents: 199, sortOrder: 3 },
+  ]);
+
   const insertedLocations = await db
     .insert(locations)
+    // Street addresses are fictional (real cities and ZIP codes).
     .values([
-      { name: "Short Pump Cinema", city: "Short Pump, VA" },
-      { name: "Williamsburg Cinema", city: "Williamsburg, VA" },
-      { name: "Richmond Cinema", city: "Richmond, VA" },
-      { name: "Stony Point Cinema", city: "Richmond, VA" },
-      { name: "Harrisonburg Cinema", city: "Harrisonburg, VA" },
-      { name: "Reston Cinema", city: "Reston, VA" },
-      { name: "Woodbridge Cinema", city: "Woodbridge, VA" },
-      { name: "Norfolk Cinema", city: "Norfolk, VA" },
+      { name: "Short Pump Cinema", city: "Short Pump, VA", address: "2150 Marquee Way, Glen Allen, VA 23059" },
+      { name: "Williamsburg Cinema", city: "Williamsburg, VA", address: "410 Colonial Commons Drive, Williamsburg, VA 23185" },
+      { name: "Richmond Cinema", city: "Richmond, VA", address: "1820 Marquee Row, Richmond, VA 23220" },
+      { name: "Stony Point Cinema", city: "Richmond, VA", address: "9350 Lantern Court, Richmond, VA 23235" },
+      { name: "Harrisonburg Cinema", city: "Harrisonburg, VA", address: "275 Valley Reel Boulevard, Harrisonburg, VA 22801" },
+      { name: "Reston Cinema", city: "Reston, VA", address: "1850 Discovery Square, Reston, VA 20190" },
+      { name: "Woodbridge Cinema", city: "Woodbridge, VA", address: "1450 Marquee Commons, Woodbridge, VA 22191" },
+      { name: "Norfolk Cinema", city: "Norfolk, VA", address: "755 Harborlight Street, Norfolk, VA 23510" },
     ])
     .returning();
 
@@ -84,21 +101,17 @@ async function main() {
     )
     .returning();
 
+  // Seats come from each screen's layout map; x/y is the seat's real position in the room.
+  const screenLayouts = new Map(
+    insertedLocations.flatMap((loc) =>
+      insertedScreens
+        .filter((sc) => sc.locationId === loc.id)
+        .map((sc, i) => [sc.id, SCREEN_LAYOUTS[i % SCREEN_LAYOUTS.length]!] as const),
+    ),
+  );
   await db.insert(seats).values(
     insertedScreens.flatMap((screen) =>
-      ROWS.flatMap((row, y) =>
-        Array.from({ length: SEATS_PER_ROW }, (_, i) => {
-          const number = i + 1;
-          return {
-            screenId: screen.id,
-            rowLabel: row,
-            number,
-            type: row === ROWS.at(-1) ? (ACCESSIBLE[number] ?? ("standard" as const)) : ("standard" as const),
-            x: number + (number > AISLE_AFTER ? 1 : 0),
-            y,
-          };
-        }),
-      ),
+      parseLayout(LAYOUTS[screenLayouts.get(screen.id)!]).map((seat) => ({ screenId: screen.id, ...seat })),
     ),
   );
 
@@ -170,6 +183,12 @@ async function main() {
           const film = insertedFilms[(l + s * 2 + t + dayIndex) % insertedFilms.length]!;
           showingRows.push({ screenId: screen.id, filmId: film.id, startsAt: cinemaTimeToUtc(date, time) });
         });
+        // Demo week: extra showings of the blockbuster (featured film #1).
+        if (date >= BUSY_START && date <= BUSY_END) {
+          for (const extra of EXTRA_SHOWTIMES.filter((e) => e.screen === s)) {
+            showingRows.push({ screenId: screen.id, filmId: insertedFilms[0]!.id, startsAt: cinemaTimeToUtc(date, extra.time) });
+          }
+        }
       });
     });
     dayIndex++;
@@ -191,10 +210,58 @@ async function main() {
   const [{ count }] = (await db.execute<{ count: string }>(
     sql`SELECT count(*)::text AS count FROM showing_seats`,
   )).rows as [{ count: string }];
+
+  const booked = await seedDemoBookings();
   console.log(
     `Seeded ${insertedLocations.length} locations, ${insertedScreens.length} screens, ` +
-      `${insertedFilms.length} films, ${showingRows.length} showings, ${count} showing seats.`,
+      `${insertedFilms.length} films, ${showingRows.length} showings, ${count} showing seats, ` +
+      `${booked} booked seats.`,
   );
+}
+
+/** Fill upcoming showings with demo bookings (see the BUSY_* and LIGHT_* settings above). */
+async function seedDemoBookings(): Promise<number> {
+  console.log("Creating demo bookings…");
+  const random = createRandom(RANDOM_SEED);
+  const today = cinemaDate(new Date());
+  const lightEnd = cinemaDate(new Date(Date.now() + LIGHT_WINDOW_DAYS * 86_400_000));
+  const windowEnd = lightEnd > BUSY_END ? lightEnd : BUSY_END;
+
+  const seatRows = await db
+    .select({ id: seats.id, screenId: seats.screenId, rowLabel: seats.rowLabel, number: seats.number, x: seats.x, type: seats.type })
+    .from(seats);
+  const seatsByScreen = new Map<string, SeedSeat[]>();
+  for (const seat of seatRows) seatsByScreen.set(seat.screenId, [...(seatsByScreen.get(seat.screenId) ?? []), seat]);
+
+  const upcoming = await db.execute<{ id: string; screen_id: string; starts_at: Date; local_date: string; local_time: string }>(sql`
+    SELECT id, screen_id, starts_at,
+           to_char(starts_at AT TIME ZONE ${CINEMA_TIME_ZONE}, 'YYYY-MM-DD') AS local_date,
+           to_char(starts_at AT TIME ZONE ${CINEMA_TIME_ZONE}, 'HH24:MI') AS local_time
+      FROM showings
+     WHERE starts_at > now()
+       AND (starts_at AT TIME ZONE ${CINEMA_TIME_ZONE})::date <= ${windowEnd}::date
+     ORDER BY starts_at
+  `);
+
+  const plan = upcoming.rows.flatMap((row) => {
+    const isBusy = row.local_date >= BUSY_START && row.local_date <= BUSY_END;
+    const isLight = !isBusy && row.local_date >= today && row.local_date <= lightEnd;
+    if (!isBusy && !isLight) return [];
+
+    let occupancy: number;
+    if (isBusy) {
+      const soldOutChance = EXTRA_TIMES.includes(row.local_time) ? EXTRA_SOLD_OUT_CHANCE : BUSY_SOLD_OUT_CHANCE;
+      occupancy = random.chance(soldOutChance) ? 1 : random.between(...BUSY_OCCUPANCY);
+    } else {
+      const weekday = new Date(`${row.local_date}T12:00:00Z`).getUTCDay();
+      occupancy = random.between(...LIGHT_OCCUPANCY) + (weekday === 5 || weekday === 6 ? WEEKEND_BONUS : 0);
+    }
+
+    const showing: SeedShowing = { id: row.id, screenId: row.screen_id, startsAt: new Date(row.starts_at) };
+    return [{ showing, groups: chooseBookedGroups(seatsByScreen.get(row.screen_id) ?? [], occupancy, random) }];
+  });
+
+  return insertBookings(db, plan, random, await db.select().from(ticketTypes));
 }
 
 main()

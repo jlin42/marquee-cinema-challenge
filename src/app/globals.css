@@ -11,6 +11,10 @@
   --color-marquee-400: #ffcf6e;
   --color-marquee-500: #f5b83d;
   --color-marquee-600: #d99a1e;
+
+  /* Access blue of the International Symbol of Access / disability parking signs (Pantone 294 C). */
+  --color-access-blue: #002f6c;
+  --color-access-blue-hover: #0a4590;
 }
 
 /* Carousel progress bar (film-carousel.tsx) */

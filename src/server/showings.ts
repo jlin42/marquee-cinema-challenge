@@ -14,9 +14,15 @@ const totalSeats = sql<number>`(
 const showingFields = {
   id: showings.id,
   startsAt: showings.startsAt,
-  film: { id: films.id, title: films.title, rating: films.rating, runtimeMinutes: films.runtimeMinutes },
+  film: {
+    id: films.id,
+    title: films.title,
+    rating: films.rating,
+    runtimeMinutes: films.runtimeMinutes,
+    backdropUrl: films.backdropUrl,
+  },
   screen: { id: screens.id, name: screens.name },
-  location: { id: locations.id, name: locations.name, city: locations.city },
+  location: { id: locations.id, name: locations.name, city: locations.city, address: locations.address },
   seatsLeft,
   totalSeats,
 };
@@ -63,4 +69,14 @@ export async function getActiveHold(showingId: string, sessionId: string) {
     .orderBy(desc(holds.createdAt))
     .limit(1);
   return hold ?? null;
+}
+
+/** Every upcoming showing of a film at one theater, in time order, with seats left. */
+export async function listFilmShowtimesAtLocation(filmId: string, locationId: string) {
+  return db
+    .select({ id: showings.id, startsAt: showings.startsAt, screenName: screens.name, seatsLeft })
+    .from(showings)
+    .innerJoin(screens, eq(screens.id, showings.screenId))
+    .where(and(eq(showings.filmId, filmId), eq(screens.locationId, locationId), gt(showings.startsAt, sql`now()`)))
+    .orderBy(asc(showings.startsAt));
 }

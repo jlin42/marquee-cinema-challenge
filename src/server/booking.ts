@@ -23,10 +23,12 @@ import { env } from "@/env";
 import {
   HoldExpiredError,
   HoldNotFoundError,
+  InvalidTicketsError,
   SeatConflictError,
   ShowingUnavailableError,
   isUniqueViolation,
 } from "./errors";
+import { listTicketTypes, priceTickets, type TicketTypeCode } from "./pricing";
 
 export const MAX_SEATS_PER_HOLD = 10;
 
@@ -120,12 +122,27 @@ export async function releaseHold(input: { holdId: string; sessionId: string }):
 // Confirm (hold -> booking)
 // ---------------------------------------------------------------------------
 
-export type Booking = { id: string; showingId: string; email: string; seatIds: string[]; createdAt: Date };
+export type BookedTicket = { seatId: string; ticketType: TicketTypeCode; priceCents: number; feeCents: number };
 
+export type Booking = {
+  id: string;
+  showingId: string;
+  email: string;
+  seatIds: string[];
+  tickets: BookedTicket[];
+  totalCents: number;
+  createdAt: Date;
+};
+
+/**
+ * Turn a hold into a booking. `tickets` maps seat id → ticket type (missing = General).
+ * Prices always come from the server's price list, never from the client.
+ */
 export async function confirmHold(input: {
   holdId: string;
   sessionId: string;
   email: string;
+  tickets?: Partial<Record<string, TicketTypeCode>>;
 }): Promise<Booking> {
   try {
     return await db.transaction(async (tx) => {
@@ -136,7 +153,11 @@ export async function confirmHold(input: {
       const existing = await findBookingByHold(tx, hold.id);
       if (existing) return existing;
 
-      // Payment would be authorized here (mocked in this demo).
+      // Price the tickets from the server's price list.
+      const priced = priceTickets(hold.seatIds, input.tickets ?? {}, await listTicketTypes(tx));
+      if (!priced) throw new InvalidTicketsError();
+
+      // Payment for priced.totalCents would be authorized here (mocked in this demo).
 
       // Seats must still be held by this hold and unexpired. All or nothing.
       const booked = await tx.execute(sql`
@@ -150,20 +171,20 @@ export async function confirmHold(input: {
 
       const [booking] = await tx
         .insert(bookings)
-        .values({ showingId: hold.showingId, holdId: hold.id, email: input.email })
+        .values({ showingId: hold.showingId, holdId: hold.id, email: input.email, totalCents: priced.totalCents })
         .returning();
       if (!booking) throw new Error("Failed to create booking");
 
       // Backstop: UNIQUE (showing_id, seat_id) rejects any double sale.
       await tx.insert(bookingSeats).values(
-        hold.seatIds.map((seatId) => ({ bookingId: booking.id, showingId: hold.showingId, seatId })),
+        priced.lines.map((line) => ({ bookingId: booking.id, showingId: hold.showingId, ...line })),
       );
       await tx
         .update(showingSeats)
         .set({ bookingId: booking.id })
         .where(and(eq(showingSeats.holdId, hold.id), eq(showingSeats.status, "booked")));
 
-      return { ...booking, seatIds: hold.seatIds };
+      return { ...booking, seatIds: hold.seatIds, tickets: priced.lines };
     });
   } catch (err) {
     // A concurrent confirm of the same hold won the race: return its booking.
@@ -244,10 +265,15 @@ async function lockOwnedHold(tx: Tx, holdId: string, sessionId: string) {
 async function findBookingByHold(conn: Tx, holdId: string): Promise<Booking | null> {
   const [booking] = await conn.select().from(bookings).where(eq(bookings.holdId, holdId));
   if (!booking) return null;
-  const seatRows = await conn
-    .select({ seatId: bookingSeats.seatId })
+  const tickets = await conn
+    .select({
+      seatId: bookingSeats.seatId,
+      ticketType: bookingSeats.ticketType,
+      priceCents: bookingSeats.priceCents,
+      feeCents: bookingSeats.feeCents,
+    })
     .from(bookingSeats)
     .where(eq(bookingSeats.bookingId, booking.id))
     .orderBy(asc(bookingSeats.seatId));
-  return { ...booking, seatIds: seatRows.map((r) => r.seatId) };
+  return { ...booking, seatIds: tickets.map((t) => t.seatId), tickets };
 }

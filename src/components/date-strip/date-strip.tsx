@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { focusRing, IconButton } from "@/components/ui/icon-button";
-import type { DateChipVM } from "./movies-view-model";
+import type { DateChipVM } from "./date-chips";
 import { useDateStrip } from "./use-date-strip";
 
 /**
@@ -30,7 +30,7 @@ export function DateStrip({ dates }: { dates: DateChipVM[] }) {
             key={strip.pageKey}
             role="list"
             aria-label="Choose a date"
-            className="grid items-center gap-1 motion-safe:animate-[date-page-in_220ms_ease-out]"
+            className={`grid items-center gap-1 motion-safe:animate-[date-page-in_220ms_ease-out] ${strip.isMeasured ? "" : "invisible"}`}
             style={{ gridTemplateColumns: `2rem repeat(${strip.page.items.length}, minmax(0, 1fr))` }}
           >
             <MonthTab label={strip.page.month} />

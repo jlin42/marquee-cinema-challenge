@@ -16,6 +16,8 @@ export const locations = pgTable("locations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   city: text("city").notNull(),
+  // Full street address, shown when confirming the theater before booking.
+  address: text("address"),
 });
 
 export const screens = pgTable("screens", {
@@ -81,6 +83,20 @@ export const showings = pgTable(
 
 export const seatStatus = pgEnum("seat_status", ["available", "held", "booked"]);
 
+// ---------- Pricing ----------
+
+export const ticketType = pgEnum("ticket_type", ["general", "child", "senior"]);
+
+/** Price list. Prices are in cents; the fee is charged per ticket. */
+export const ticketTypes = pgTable("ticket_types", {
+  code: ticketType("code").primaryKey(),
+  label: text("label").notNull(),
+  description: text("description"), // e.g. "3–11 years"
+  priceCents: integer("price_cents").notNull(),
+  feeCents: integer("fee_cents").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
 export const holds = pgTable("holds", {
   id: uuid("id").primaryKey().defaultRandom(),
   showingId: uuid("showing_id")
@@ -106,6 +122,8 @@ export const bookings = pgTable("bookings", {
     .unique()
     .references(() => holds.id),
   email: text("email").notNull(),
+  // Total charged (all tickets plus fees), fixed at booking time.
+  totalCents: integer("total_cents").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -149,6 +167,10 @@ export const bookingSeats = pgTable(
     seatId: uuid("seat_id")
       .notNull()
       .references(() => seats.id),
+    // What this ticket was sold as, and the price paid (a snapshot: later price changes don't rewrite it).
+    ticketType: ticketType("ticket_type").notNull().default("general"),
+    priceCents: integer("price_cents").notNull().default(0),
+    feeCents: integer("fee_cents").notNull().default(0),
   },
   (t) => [uniqueIndex("booking_seats_showing_seat_uq").on(t.showingId, t.seatId)],
 );

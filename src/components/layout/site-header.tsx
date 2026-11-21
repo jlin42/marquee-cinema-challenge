@@ -6,9 +6,16 @@ import { getLocationPickerViewModel } from "@/features/location/location-view-mo
 /**
  * Top bar: logo on the left; theater picker and Movies on the right.
  * `overlay` floats it over a full-screen hero; otherwise it's a sticky bar.
+ * `showLocationPicker={false}` hides the picker where the theater is fixed (booking).
  */
-export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
-  const picker = await getLocationPickerViewModel();
+export async function SiteHeader({
+  overlay = false,
+  showLocationPicker = true,
+}: {
+  overlay?: boolean;
+  showLocationPicker?: boolean;
+}) {
+  const picker = showLocationPicker ? await getLocationPickerViewModel() : null;
 
   return (
     <header
@@ -24,7 +31,7 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
         </Link>
 
         <nav aria-label="Main" className="flex min-w-0 items-center gap-1 sm:gap-4">
-          <LocationPicker vm={picker} />
+          {picker && <LocationPicker vm={picker} />}
           <Link
             href="/movies"
             className={`shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-sm font-medium text-neutral-200 transition hover:bg-white/10 hover:text-white ${focusRing}`}

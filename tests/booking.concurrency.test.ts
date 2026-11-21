@@ -5,7 +5,7 @@
  * Requires the database to be running and migrated (npm run db:up && npm run db:migrate).
  * Each test builds its own showing, so it doesn't depend on seed data.
  */
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db, pool } from "@/db/client";
@@ -19,6 +19,7 @@ import {
   seats,
   showingSeats,
   showings,
+  ticketTypes,
 } from "@/db/schema";
 import { confirmHold, createHold, getSeatMap, releaseHold } from "@/server/booking";
 import { HoldExpiredError, HoldNotFoundError, SeatConflictError, isUniqueViolation } from "@/server/errors";
@@ -58,6 +59,18 @@ async function makeShowing(seatCount = 8) {
 }
 
 const session = () => `test-session-${randomUUID()}`;
+
+// Confirming prices tickets from the price list, so make sure it exists.
+beforeAll(async () => {
+  await db
+    .insert(ticketTypes)
+    .values([
+      { code: "general", label: "General", priceCents: 1475, feeCents: 199, sortOrder: 1 },
+      { code: "child", label: "Child", priceCents: 1175, feeCents: 199, sortOrder: 2 },
+      { code: "senior", label: "Senior", priceCents: 1125, feeCents: 199, sortOrder: 3 },
+    ])
+    .onConflictDoNothing();
+});
 
 let fx: Awaited<ReturnType<typeof makeShowing>>;
 beforeEach(async () => {

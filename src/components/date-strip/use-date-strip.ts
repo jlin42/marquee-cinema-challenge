@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { DateChipVM } from "./movies-view-model";
+import type { DateChipVM } from "./date-chips";
 import { paginateByMonth } from "./paginate-dates";
 
 // Layout constants shared with date-strip.tsx (Tailwind: month tab w-8, gap-1).
@@ -61,6 +61,8 @@ export function useDateStrip(dates: DateChipVM[]) {
     hasNext: pageIndex < pages.length - 1,
     prev: () => goTo(pageIndex - 1),
     next: () => goTo(pageIndex + 1),
+    /** False until the strip has been measured; the view hides it to avoid a resize flash. */
+    isMeasured: width != null,
     rangeLabel: page ? `${page.items[0]!.ariaLabel} to ${page.items.at(-1)!.ariaLabel}` : "",
   };
 }
