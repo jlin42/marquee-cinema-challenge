@@ -47,10 +47,20 @@ export async function seedStaff(random: Random): Promise<SeededStaff> {
     ...names.slice(1, 1 + INITIAL.privileged).map((n) => ({ ...toAccount(n), passwordHash: demoHash, role: "privileged" as const })),
     ...names.slice(1 + INITIAL.privileged).map((n) => ({ ...toAccount(n), passwordHash: demoHash, role: "viewer" as const })),
   ];
-  const accounts: Account[] = await db
+  // Accounts that already exist (e.g. your admin) are left untouched, password included.
+  await db
     .insert(staffUsers)
     .values(rows.map((r, i) => ({ ...r, createdAt: daysAgo(HISTORY_DAYS + 10 - i * 0.1) })))
-    .returning({ id: staffUsers.id, username: staffUsers.username, role: staffUsers.role });
+    .onConflictDoNothing();
+  const byName = new Map(
+    (
+      await db
+        .select({ id: staffUsers.id, username: staffUsers.username, role: staffUsers.role })
+        .from(staffUsers)
+        .where(inArray(sql`lower(${staffUsers.username})`, rows.map((r) => r.username.toLowerCase())))
+    ).map((a) => [a.username.toLowerCase(), a]),
+  );
+  const accounts: Account[] = rows.map((r) => byName.get(r.username.toLowerCase())!).filter(Boolean);
 
   const actions = await seedHistory(random, accounts);
 
@@ -84,20 +94,45 @@ async function seedHistory(random: Random, accounts: Account[]): Promise<number>
   ok(await setActive({ actorId: lead.id, targetId: flaky.id, active: true, at: daysAgo(6.8) }));
   ok(await changeRole({ actorId: lead.id, targetId: demoted.id, role: "privileged", at: daysAgo(3.3) }));
 
-  // Booking work: privileged staff do most of it, admins some. Uneven weights look real.
-  const actors = [...privileged, promoteA, promoteB, ...admins];
-  const weights = actors.map((a) => (a.role === "admin" ? 0.6 : random.between(0.3, 2.5)));
+  return done + (await seedBookingHistory(random, [...privileged, promoteA, promoteB, ...admins]));
+}
+
+/**
+ * Staff booking work (cancellations and seat moves, with past timestamps) on demo
+ * bookings. `actors` defaults to every active privileged and admin account.
+ */
+export async function seedBookingHistory(random: Random, actors?: Account[]): Promise<number> {
+  if (!actors) {
+    actors = await db
+      .select({ id: staffUsers.id, username: staffUsers.username, role: staffUsers.role })
+      .from(staffUsers)
+      .where(and(eq(staffUsers.isActive, true), inArray(staffUsers.role, ["admin", "privileged"])))
+      .orderBy(asc(staffUsers.username));
+  }
+  if (actors.length === 0) return 0;
+  let done = 0;
+  const ok = (r: { ok: boolean }) => (r.ok ? done++ : undefined);
+
+  // Privileged staff do most of the work, admins some. Uneven weights look real.
+  const team = actors;
+  const weights = team.map((a) => (a.role === "admin" ? 0.6 : random.between(0.3, 2.5)));
   const pickActor = () => {
     let r = random.next() * weights.reduce((s, w) => s + w, 0);
-    for (let i = 0; i < actors.length; i++) if ((r -= weights[i]!) <= 0) return actors[i]!;
-    return actors[0]!;
+    for (let i = 0; i < team.length; i++) if ((r -= weights[i]!) <= 0) return team[i]!;
+    return team[0]!;
   };
 
   const candidates = await db
     .select({ id: bookings.id, showingId: bookings.showingId, filmId: showings.filmId, screenId: showings.screenId, startsAt: showings.startsAt })
     .from(bookings)
     .innerJoin(showings, eq(showings.id, bookings.showingId))
-    .where(and(eq(bookings.status, "active"), gt(showings.startsAt, new Date(Date.now() + 3 * 3_600_000))))
+    .where(
+      and(
+        eq(bookings.status, "active"),
+        gt(showings.startsAt, new Date(Date.now() + 3 * 3_600_000)),
+        sql`EXISTS (SELECT 1 FROM booking_seats bs WHERE bs.booking_id = ${bookings.id} AND bs.released_at IS NULL)`,
+      ),
+    )
     .orderBy(asc(bookings.id));
   const pool = shuffle(random, candidates).slice(0, CANCELLATIONS + MOVES * 2);
 

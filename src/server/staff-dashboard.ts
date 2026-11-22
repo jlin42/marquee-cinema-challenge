@@ -1,5 +1,5 @@
 /** Read-only queries for the staff dashboard. Access is checked by the caller's view model. */
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db/client";
 import { bookings, bookingSeats, films, locations, screens, seats, showings } from "@/db/schema";
 import { CINEMA_TIME_ZONE } from "@/lib/time";
@@ -60,11 +60,12 @@ export async function getShowingSeatsWithBookings(showingId: string) {
   `);
 }
 
-/** Bookings for a showing with booker details and their tickets, oldest first. */
+/** Bookings for a showing with booker details and their tickets, newest first. */
 export async function listShowingBookings(showingId: string) {
   const rows = await db
     .select({
       bookingId: bookings.id,
+      confirmationCode: bookings.confirmationCode,
       customerName: bookings.customerName,
       email: bookings.email,
       totalCents: bookings.totalCents,
@@ -78,9 +79,50 @@ export async function listShowingBookings(showingId: string) {
     .innerJoin(bookingSeats, eq(bookingSeats.bookingId, bookings.id))
     .innerJoin(seats, eq(seats.id, bookingSeats.seatId))
     .where(and(eq(bookings.showingId, showingId), eq(bookings.status, "active"), isNull(bookingSeats.releasedAt)))
-    .orderBy(asc(bookings.createdAt), asc(seats.y), asc(seats.number));
+    .orderBy(desc(bookings.createdAt), asc(seats.y), asc(seats.number));
   return rows;
 }
+
+/**
+ * Find bookings across every showing by confirmation number (full or first 4+
+ * characters), booker name, or (only when `includeEmail`) email. Newest showings last.
+ */
+export async function searchBookings(term: string, options: { includeEmail: boolean; limit?: number }) {
+  const text = term.trim();
+  const code = text.toUpperCase().replace(/[^0-9A-Z]/g, "");
+  const clauses: SQL[] = [ilike(bookings.customerName, `%${escapeLike(text)}%`)];
+  if (code.length >= 4) {
+    const withPrefix = code.startsWith("MQ") ? code : `MQ${code}`;
+    clauses.push(ilike(bookings.confirmationCode, `${escapeLike(withPrefix)}%`));
+  }
+  if (options.includeEmail) clauses.push(ilike(bookings.email, `%${escapeLike(text)}%`));
+
+  return db
+    .select({
+      id: bookings.id,
+      confirmationCode: bookings.confirmationCode,
+      customerName: bookings.customerName,
+      email: bookings.email,
+      status: bookings.status,
+      createdAt: bookings.createdAt,
+      showingId: showings.id,
+      startsAt: showings.startsAt,
+      filmTitle: films.title,
+      where: sql<string>`${locations.name} || ' · ' || ${screens.name}`,
+      seats: sql<number>`(SELECT count(*)::int FROM booking_seats bs WHERE bs.booking_id = ${bookings.id} AND bs.released_at IS NULL)`,
+    })
+    .from(bookings)
+    .innerJoin(showings, eq(showings.id, bookings.showingId))
+    .innerJoin(films, eq(films.id, showings.filmId))
+    .innerJoin(screens, eq(screens.id, showings.screenId))
+    .innerJoin(locations, eq(locations.id, screens.locationId))
+    .where(or(...clauses))
+    .orderBy(desc(bookings.createdAt))
+    .limit(options.limit ?? 25);
+}
+
+/** Treat the user's text literally inside a LIKE pattern. */
+const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 /** Where a showing is (theater, screen, cinema-local date), to open the dashboard on it. */
 export async function locateShowing(showingId: string) {

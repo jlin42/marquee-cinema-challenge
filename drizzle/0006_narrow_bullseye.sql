@@ -1,0 +1,1 @@
+ALTER TABLE "bookings" ALTER COLUMN "confirmation_code" SET DEFAULT 'MQ' || upper(substr(md5(gen_random_uuid()::text), 1, 12));

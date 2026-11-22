@@ -43,6 +43,20 @@
       "when": 1795316716892,
       "tag": "0005_loud_firestar",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795318189155,
+      "tag": "0006_narrow_bullseye",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795320683473,
+      "tag": "0007_tan_jimmy_woo",
+      "breakpoints": true
     }
   ]
 }

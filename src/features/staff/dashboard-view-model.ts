@@ -7,7 +7,9 @@ import {
   listScreenShowings,
   listShowingBookings,
   locateShowing,
+  searchBookings,
 } from "@/server/staff-dashboard";
+import { formatConfirmationCode } from "@/lib/confirmation-code";
 import { formatCents } from "@/lib/money";
 import { cinemaDate, dateParts, formatTime } from "@/lib/time";
 
@@ -31,12 +33,32 @@ export type StaffBookingVM = {
   seats: string; // "E5 (Child), E6 (General)"
   total: string;
   bookedAt: string;
+  /** Booked in the last 24 hours (shown with a "New" badge). */
+  isRecent: boolean;
   /** Present only for staff allowed to manage bookings. */
   modifyHref: string | null;
 };
 
+export type BookingSearchVM = {
+  query: string;
+  hint: string;
+  results: {
+    id: string;
+    reference: string;
+    customerName: string;
+    email: string;
+    film: string;
+    when: string;
+    where: string;
+    seats: string;
+    isCancelled: boolean;
+    href: string;
+  }[];
+};
+
 export type DashboardVM = {
   notice: string | null;
+  search: BookingSearchVM;
   canManageBookings: boolean;
   filters: {
     location: string;
@@ -62,7 +84,16 @@ const TICKET_LABEL = { general: "General", child: "Child", senior: "Senior" } as
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const NOTICES: Record<string, string> = { moved: "Booking moved. The change is in the action log." };
 
-export type DashboardParams = { location?: string; screen?: string; date?: string; showing?: string; showingId?: string; notice?: string };
+export type DashboardParams = {
+  location?: string;
+  screen?: string;
+  date?: string;
+  showing?: string;
+  showingId?: string;
+  notice?: string;
+  /** Booking search: confirmation number, name, or email (with contact permission). */
+  find?: string;
+};
 
 /**
  * Presenter for the staff dashboard. Filters come from the URL; anything invalid falls
@@ -85,9 +116,11 @@ export async function getDashboardViewModel(staff: StaffUser, input: DashboardPa
   const upcoming = showings.find((s) => s.startsAt.getTime() > Date.now());
   const showing = showings.find((s) => s.id === params.showing) ?? upcoming ?? showings[0];
   const canManage = can(staff, "bookings.manage");
+  const showContact = can(staff, "customers.contact");
 
   return {
     notice: (params.notice && NOTICES[params.notice]) || null,
+    search: await toSearchVM(params.find, showContact),
     canManageBookings: canManage,
     filters: {
       location: location?.id ?? "",
@@ -121,13 +154,14 @@ async function toShowingDetail(
   ]);
 
   // Group ticket lines into bookings.
-  const byBooking = new Map<string, { name: string; email: string; totalCents: number; createdAt: Date; seats: string[] }>();
+  const byBooking = new Map<string, { name: string; email: string; totalCents: number; createdAt: Date; code: string; seats: string[] }>();
   for (const r of bookingRows) {
     const b = byBooking.get(r.bookingId) ?? {
       name: r.customerName ?? "(no name)",
       email: options.showContact ? r.email : maskEmail(r.email),
       totalCents: r.totalCents,
       createdAt: r.createdAt,
+      code: r.confirmationCode,
       seats: [],
     };
     b.seats.push(`${r.rowLabel}${r.number} (${TICKET_LABEL[r.ticketType]})`);
@@ -175,13 +209,41 @@ async function toShowingDetail(
     }),
     bookings: [...byBooking.entries()].map(([id, b]) => ({
       id,
-      reference: id.slice(0, 8).toUpperCase(),
+      reference: formatConfirmationCode(b.code),
       customerName: b.name,
       email: b.email,
       seats: b.seats.join(", "),
       total: formatCents(b.totalCents),
       bookedAt: stamp(b.createdAt),
+      isRecent: Date.now() - b.createdAt.getTime() < 24 * 3_600_000,
       modifyHref: options.canManage ? `${options.modifyBase}&modify=${id}` : null,
     })),
+  };
+}
+
+async function toSearchVM(find: string | undefined, showContact: boolean): Promise<BookingSearchVM> {
+  const hint = showContact ? "Confirmation number, name or email" : "Confirmation number or name";
+  const query = (find ?? "").trim().slice(0, 80);
+  if (query.length < 2) return { query, hint, results: [] };
+
+  const rows = await searchBookings(query, { includeEmail: showContact });
+  return {
+    query,
+    hint,
+    results: rows.map((r) => {
+      const day = dateParts(cinemaDate(r.startsAt));
+      return {
+        id: r.id,
+        reference: formatConfirmationCode(r.confirmationCode),
+        customerName: r.customerName ?? "(no name)",
+        email: showContact ? r.email : maskEmail(r.email),
+        film: r.filmTitle,
+        when: `${day.weekday} ${day.monthShort} ${day.day}, ${formatTime(r.startsAt)}`,
+        where: r.where,
+        seats: `${r.seats} seat${r.seats === 1 ? "" : "s"}`,
+        isCancelled: r.status === "cancelled",
+        href: `/staff/dashboard?showingId=${r.showingId}`,
+      };
+    }),
   };
 }

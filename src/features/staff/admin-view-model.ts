@@ -38,6 +38,8 @@ export type AdminVM = {
   error: string | null;
   roles: { value: StaffRole; label: string }[];
   counts: string; // "2 admins · 10 privileged · 30 viewers"
+  /** Show the "Load demo data" panel (development, or DEMO_TOOLS=1). */
+  showDemoTools: boolean;
   /** Changes whenever saved roles or statuses change, so the editor resets after a save. */
   accountsVersion: string;
   users: AdminUserVM[];
@@ -64,6 +66,7 @@ export async function getAdminViewModel(staff: StaffUser, params: { user?: strin
     error: params.error && KNOWN_ERRORS.has(params.error) ? params.error : params.error ? "That change couldn't be made." : null,
     roles: (Object.keys(ROLE_LABEL) as StaffRole[]).map((r) => ({ value: r, label: ROLE_LABEL[r] })),
     counts: `${tally("admin")} admins · ${tally("privileged")} privileged · ${tally("viewer")} viewers`,
+    showDemoTools: process.env.NODE_ENV !== "production" || process.env.DEMO_TOOLS === "1",
     accountsVersion: users.map((u) => `${u.id}:${u.role}:${u.isActive ? 1 : 0}`).join("|"),
     users: users.map((u) => ({
       id: u.id,

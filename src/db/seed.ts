@@ -1,17 +1,24 @@
 /**
- * Seeds demo data: Marquee's 8 Virginia locations × 3 screens, 4 films, and a full
- * schedule of showings from SCHEDULE_START to SCHEDULE_END. Wipes existing data first.
- * Usage: npm run db:seed
+ * Demo data: Marquee's 8 Virginia locations × 3 screens, the films, a full schedule of
+ * showings from SCHEDULE_START to SCHEDULE_END, demo bookings, staff and their history.
+ *
+ *   npm run db:seed    safe: builds the demo on an empty database; otherwise only adds
+ *                      missing reference data and keeps everything else
+ *   npm run db:reset   wipes and rebuilds everything (asks first; all-or-nothing)
  */
 import "dotenv/config";
 import { sql } from "drizzle-orm";
-import { db, pool } from "./client";
+import { createInterface } from "node:readline/promises";
+import { eq } from "drizzle-orm";
+import { db, pool, type DbOrTx } from "./client";
+import { hashPassword } from "../server/passwords";
 import { randomBytes } from "node:crypto";
-import { discountCodes, films, locations, screens, seats, showings, ticketTypes } from "./schema";
-import { CINEMA_TIME_ZONE, cinemaDate } from "../lib/time";
+import { discountCodes, films, locations, screens, seats, showings, staffUsers, ticketTypes } from "./schema";
+import { CINEMA_TIME_ZONE } from "../lib/time";
 import { LAYOUTS, parseLayout, type LayoutName } from "./layouts";
 import { seedStaff } from "./seed-staff";
-import { chooseBookedGroups, createRandom, insertBookings, type SeedSeat, type SeedShowing } from "./seed-bookings";
+import { BUSY_END, BUSY_START, EXTRA_SHOWTIMES, RANDOM_SEED, seedDemoBookings, topUpDemoData } from "./demo-data";
+import { createRandom } from "./seed-bookings";
 
 // Each theater's three screens, by layout (see layouts.ts).
 const SCREEN_LAYOUTS: LayoutName[] = ["large", "standard", "small"];
@@ -29,22 +36,7 @@ const SCREEN_SHOWTIMES: string[][] = [
 ];
 const LATE_SHOW = { screen: 0, time: "22:45", weekdays: [5, 6] }; // Fri and Sat
 
-// Demo week (the presentation): extra showtimes of the blockbuster, and busy, partly sold-out houses.
-const BUSY_START = "2026-11-25";
-const BUSY_END = "2026-12-01";
-const EXTRA_SHOWTIMES = [
-  { screen: 2, time: "09:30" }, // early show in the small room (ends before its 12:15 show)
-  { screen: 1, time: "23:30" }, // late show in the standard room (after its 8:30 show)
-];
-const EXTRA_TIMES = EXTRA_SHOWTIMES.map((e) => e.time);
-const BUSY_OCCUPANCY = [0.8, 0.99] as const;
-const BUSY_SOLD_OUT_CHANCE = 0.15; // regular showings that week
-const EXTRA_SOLD_OUT_CHANCE = 0.5; // the added blockbuster showings
-// Other dates within two weeks of seeding get lighter, weekend-heavier bookings.
-const LIGHT_WINDOW_DAYS = 14;
-const LIGHT_OCCUPANCY = [0.25, 0.7] as const;
-const WEEKEND_BONUS = 0.1;
-const RANDOM_SEED = 20261125;
+
 
 // Most theaters play every film; a few smaller houses skip some (by theater name → film slugs).
 // The blockbuster (featured #1) plays everywhere, since the demo week adds extra showings of it.
@@ -53,6 +45,141 @@ const LINEUP_EXCLUSIONS: Record<string, string[]> = {
   "Williamsburg Cinema": ["hollow-pines"],
   "Norfolk Cinema": ["the-quiet-frequency"],
 };
+
+// Price list (cents). The fee is per ticket.
+const TICKET_TYPES = [
+  { code: "general", label: "General", description: null, priceCents: 1475, feeCents: 199, sortOrder: 1 },
+  { code: "child", label: "Child", description: "3–11 years", priceCents: 1175, feeCents: 199, sortOrder: 2 },
+  { code: "senior", label: "Senior", description: "60+ years", priceCents: 1125, feeCents: 199, sortOrder: 3 },
+] satisfies (typeof ticketTypes.$inferInsert)[];
+
+// Films, in carousel order. `slug` is the stable key used to refresh details later.
+const FILMS = [
+  {
+    slug: "orbit-of-ash",
+    title: "Orbit of Ash",
+    runtimeMinutes: 142,
+    rating: "PG-13",
+    genre: "Sci-fi",
+    tagline: "The last ship home is already on fire.",
+    synopsis:
+      "A salvage crew drifting past a dying star finds a distress call from a ship that left Earth two hundred years ago — and a passenger who remembers them.",
+    backdropUrl: "/films/orbit-of-ash.svg",
+    featuredRank: 1,
+  },
+  {
+    slug: "the-last-projectionist",
+    title: "The Last Projectionist",
+    runtimeMinutes: 118,
+    rating: "PG-13",
+    genre: "Drama",
+    tagline: "Every reel ends. Not every story does.",
+    synopsis:
+      "On the final night of a small-town movie palace, its projectionist threads one last film — and the audience starts appearing in it.",
+    backdropUrl: "/films/the-last-projectionist.svg",
+    featuredRank: 2,
+  },
+  {
+    slug: "paper-lanterns",
+    title: "Paper Lanterns",
+    runtimeMinutes: 96,
+    rating: "PG",
+    genre: "Animation",
+    tagline: "Light the way. Follow it home.",
+    synopsis:
+      "A girl who folds lanterns for the river festival discovers each one carries a wish downstream — and someone has been answering them.",
+    backdropUrl: "/films/paper-lanterns.svg",
+    featuredRank: 3,
+  },
+  {
+    slug: "one-seat-left",
+    title: "One Seat Left",
+    runtimeMinutes: 104,
+    rating: "R",
+    genre: "Thriller",
+    tagline: "The late show has one seat left. Yours.",
+    synopsis:
+      "Locked in an old cinema after the midnight screening, five strangers realize the film on screen is showing what happens next.",
+    backdropUrl: "/films/one-seat-left.svg",
+    featuredRank: 4,
+  },
+  {
+    slug: "saltwater-kings",
+    title: "Saltwater Kings",
+    runtimeMinutes: 124,
+    rating: "PG-13",
+    genre: "Adventure",
+    tagline: "The bay gives. The bay takes back.",
+    synopsis:
+      "Two estranged brothers inherit their father's failing oyster boat and one summer to save it, racing a storm, a rival crew and each other across the bay.",
+    backdropUrl: "/films/saltwater-kings.svg",
+    featuredRank: 5,
+  },
+  {
+    slug: "the-quiet-frequency",
+    title: "The Quiet Frequency",
+    runtimeMinutes: 109,
+    rating: "PG-13",
+    genre: "Mystery",
+    tagline: "Tonight's caller already knows tomorrow.",
+    synopsis:
+      "A late-night radio host starts taking calls from a listener who describes tomorrow's headlines in perfect detail — including one about the host.",
+    backdropUrl: "/films/the-quiet-frequency.svg",
+    featuredRank: null,
+  },
+  {
+    slug: "hollow-pines",
+    title: "Hollow Pines",
+    runtimeMinutes: 98,
+    rating: "R",
+    genre: "Horror",
+    tagline: "Every night, the trees lean closer.",
+    synopsis:
+      "A family's fresh start in a mountain cabin unravels when they notice the forest around it moves a little nearer each morning.",
+    backdropUrl: "/films/hollow-pines.svg",
+    featuredRank: null,
+  },
+  {
+    slug: "second-chair",
+    title: "Second Chair",
+    runtimeMinutes: 101,
+    rating: "PG-13",
+    genre: "Comedy",
+    tagline: "Always the runner-up. Not this time.",
+    synopsis:
+      "A violinist who has played second chair for twenty years enters a regional competition — and finds herself up against the student she once taught.",
+    backdropUrl: "/films/second-chair.svg",
+    featuredRank: null,
+  },
+  {
+    slug: "ember-and-frost",
+    title: "Ember & Frost",
+    runtimeMinutes: 92,
+    rating: "PG",
+    genre: "Animation",
+    tagline: "Opposites thaw.",
+    synopsis:
+      "A runaway fire sprite and a stubborn snow spirit must cross the mountains together before the turning of the season traps them both.",
+    backdropUrl: "/films/ember-and-frost.svg",
+    featuredRank: null,
+  },
+] satisfies (typeof films.$inferInsert & { slug: string })[];
+
+/**
+ * Discount codes. The 100% comp code comes from COMP_DISCOUNT_CODE in .env (gitignored),
+ * or is generated and printed, so a free-tickets code never sits in the repo.
+ */
+function discountCodeRows() {
+  const compCode = (process.env.COMP_DISCOUNT_CODE || `COMP-${randomBytes(4).toString("hex")}`).trim().toUpperCase();
+  return {
+    compCode,
+    rows: [
+      { code: compCode, description: "Staff comp", percentOff: 100 },
+      { code: "MATINEE20", description: "Matinee special", percentOff: 20 },
+      { code: "EXPIRED10", description: "Summer promo", percentOff: 10, expiresAt: new Date("2026-09-01T00:00:00Z") },
+    ] satisfies (typeof discountCodes.$inferInsert)[],
+  };
+}
 
 /** Convert a wall-clock time in the cinemas' time zone to a UTC instant (handles DST). */
 function cinemaTimeToUtc(date: string, time: string): Date {
@@ -73,7 +200,123 @@ function* datesBetween(start: string, end: string) {
   }
 }
 
+/**
+ * `npm run db:seed`: safe. On an empty database it builds the demo; on one that already
+ *   has data it only adds missing reference data (prices, discount codes, film details,
+ *   the admin account) and keeps every booking, staff account and log entry.
+ * `npm run db:reset`: wipes everything and rebuilds the demo (asks to confirm first).
+ *   The rebuild runs in one transaction, so a failure part-way loses nothing.
+ */
 async function main() {
+  const reset = process.argv.includes("--reset");
+  const [{ n }] = (await db.execute<{ n: string }>(sql`SELECT count(*)::text AS n FROM locations`)).rows as [{ n: string }];
+  const hasData = Number(n) > 0;
+
+  if (hasData && !reset) {
+    await syncReferenceData();
+    return;
+  }
+  if (hasData && reset && !process.argv.includes("--yes") && !(await confirmReset())) {
+    console.log("Cancelled. Nothing was changed.");
+    return;
+  }
+
+  console.log(hasData ? "Rebuilding the demo (one transaction: all or nothing)…" : "Building the demo…");
+  const { compCode } = await db.transaction((tx) => buildWorld(tx));
+
+  console.log("Creating staff accounts and their action history…");
+  const staff = await seedStaff(createRandom(RANDOM_SEED + 1));
+  console.log(
+    `Seeded staff: ${staff.counts.admin} admins, ${staff.counts.privileged} privileged, ` +
+      `${staff.counts.viewer} viewers, ${staff.actions} logged actions.`,
+  );
+  console.log(
+    `\nStaff sign-in at /staff as "${staff.adminUsername}"` +
+      (staff.adminPassword ? ` with password: ${staff.adminPassword}` : " (password from .env)"),
+  );
+  console.log(
+    "Other staff accounts use " +
+      (staff.demoPassword ? `the password: ${staff.demoPassword}` : "STAFF_DEMO_PASSWORD from .env") +
+      " (usernames are on the Admin tab).",
+  );
+  console.log(
+    `Discount codes: ${process.env.COMP_DISCOUNT_CODE ? "COMP_DISCOUNT_CODE from .env" : compCode} (100% off), ` +
+      "MATINEE20 (20% off), EXPIRED10 (expired, for testing).",
+  );
+}
+
+/** Ask before wiping a database that has data (bookings made while testing would be lost). */
+async function confirmReset(): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = await rl.question(
+    "This deletes ALL bookings (including ones you made), staff accounts and the action log,\n" +
+      "then rebuilds the demo. Type RESET to continue: ",
+  );
+  rl.close();
+  return answer.trim() === "RESET";
+}
+
+/**
+ * Non-destructive top-up for a database that already has data: adds or updates the
+ * price list, adds missing discount codes, refreshes film details by slug, and makes
+ * sure the admin account from .env exists. Never deletes anything.
+ */
+async function syncReferenceData() {
+  console.log("Database already has data: keeping it. Adding anything missing…");
+
+  for (const t of TICKET_TYPES) {
+    await db
+      .insert(ticketTypes)
+      .values(t)
+      .onConflictDoUpdate({ target: ticketTypes.code, set: { label: t.label, description: t.description, priceCents: t.priceCents, feeCents: t.feeCents, sortOrder: t.sortOrder } });
+  }
+
+  const codes = discountCodeRows();
+  const addedCodes = await db.insert(discountCodes).values(codes.rows).onConflictDoNothing().returning({ code: discountCodes.code });
+
+  let filmsUpdated = 0;
+  const missingFilms: string[] = [];
+  for (const f of FILMS) {
+    const updated = await db
+      .update(films)
+      .set({ title: f.title, runtimeMinutes: f.runtimeMinutes, rating: f.rating, genre: f.genre, tagline: f.tagline, synopsis: f.synopsis, backdropUrl: f.backdropUrl, featuredRank: f.featuredRank })
+      .where(eq(films.slug, f.slug))
+      .returning({ id: films.id });
+    if (updated.length) filmsUpdated++;
+    else missingFilms.push(f.title);
+  }
+
+  const admin = await ensureAdmin();
+
+  const { demoBookings, demoStaff } = await topUpDemoData();
+
+  console.log(`Price list up to date. Discount codes added: ${addedCodes.map((c) => c.code).join(", ") || "none (all present)"}.`);
+  console.log(`Film details refreshed: ${filmsUpdated}.`);
+  if (missingFilms.length) {
+    console.log(`Not in this database yet (they need showtimes, so run npm run db:reset to add them): ${missingFilms.join(", ")}.`);
+  }
+  console.log(admin);
+  console.log(demoBookings);
+  console.log(demoStaff);
+  console.log("Nothing was deleted.");
+}
+
+/** Create the .env admin if it's missing. An existing account is left exactly as it is. */
+async function ensureAdmin(): Promise<string> {
+  const username = process.env.STAFF_ADMIN_USERNAME?.trim();
+  const password = process.env.STAFF_ADMIN_PASSWORD;
+  if (!username || !password) return "Admin account: STAFF_ADMIN_USERNAME / STAFF_ADMIN_PASSWORD not set in .env, skipped.";
+  const [existing] = await db.select({ id: staffUsers.id }).from(staffUsers).where(sql`lower(${staffUsers.username}) = lower(${username})`);
+  if (existing) return `Admin account "${username}" exists (unchanged; npm run staff:reset-admin resets it).`;
+  await db.insert(staffUsers).values({ username, name: username, passwordHash: await hashPassword(password), role: "admin" });
+  return `Admin account "${username}" was missing: created it with the password from .env.`;
+}
+
+/**
+ * Build the whole demo world from scratch: wipes every table first. Runs inside one
+ * transaction (see main), so if anything fails the database is left exactly as it was.
+ */
+async function buildWorld(db: DbOrTx) {
   console.log("Clearing existing data…");
   await db.execute(sql`
     TRUNCATE booking_seats, bookings, showing_seats, holds, showings, films, seats, screens,
@@ -82,20 +325,12 @@ async function main() {
   `);
 
   // Price list (cents). The fee is per ticket.
-  await db.insert(ticketTypes).values([
-    { code: "general", label: "General", description: null, priceCents: 1475, feeCents: 199, sortOrder: 1 },
-    { code: "child", label: "Child", description: "3–11 years", priceCents: 1175, feeCents: 199, sortOrder: 2 },
-    { code: "senior", label: "Senior", description: "60+ years", priceCents: 1125, feeCents: 199, sortOrder: 3 },
-  ]);
+  await db.insert(ticketTypes).values(TICKET_TYPES);
 
-  // Discount codes. The 100% comp code comes from .env (gitignored), or is generated and
-  // printed, so a free-tickets code never sits in the repo.
-  const compCode = (process.env.COMP_DISCOUNT_CODE || `COMP-${randomBytes(4).toString("hex")}`).trim().toUpperCase();
-  await db.insert(discountCodes).values([
-    { code: compCode, description: "Staff comp", percentOff: 100 },
-    { code: "MATINEE20", description: "Matinee special", percentOff: 20 },
-    { code: "EXPIRED10", description: "Summer promo", percentOff: 10, expiresAt: new Date("2026-09-01T00:00:00Z") },
-  ]);
+  // Discount codes (the 100% comp code comes from .env, or is generated and printed).
+  const codes = discountCodeRows();
+  await db.insert(discountCodes).values(codes.rows);
+  const compCode = codes.compCode;
 
   const insertedLocations = await db
     .insert(locations)
@@ -137,116 +372,7 @@ async function main() {
 
   const insertedFilms = await db
     .insert(films)
-    .values([
-      {
-        slug: "orbit-of-ash",
-        title: "Orbit of Ash",
-        runtimeMinutes: 142,
-        rating: "PG-13",
-        genre: "Sci-fi",
-        tagline: "The last ship home is already on fire.",
-        synopsis:
-          "A salvage crew drifting past a dying star finds a distress call from a ship that left Earth two hundred years ago — and a passenger who remembers them.",
-        backdropUrl: "/films/orbit-of-ash.svg",
-        featuredRank: 1,
-      },
-      {
-        slug: "the-last-projectionist",
-        title: "The Last Projectionist",
-        runtimeMinutes: 118,
-        rating: "PG-13",
-        genre: "Drama",
-        tagline: "Every reel ends. Not every story does.",
-        synopsis:
-          "On the final night of a small-town movie palace, its projectionist threads one last film — and the audience starts appearing in it.",
-        backdropUrl: "/films/the-last-projectionist.svg",
-        featuredRank: 2,
-      },
-      {
-        slug: "paper-lanterns",
-        title: "Paper Lanterns",
-        runtimeMinutes: 96,
-        rating: "PG",
-        genre: "Animation",
-        tagline: "Light the way. Follow it home.",
-        synopsis:
-          "A girl who folds lanterns for the river festival discovers each one carries a wish downstream — and someone has been answering them.",
-        backdropUrl: "/films/paper-lanterns.svg",
-        featuredRank: 3,
-      },
-      {
-        slug: "one-seat-left",
-        title: "One Seat Left",
-        runtimeMinutes: 104,
-        rating: "R",
-        genre: "Thriller",
-        tagline: "The late show has one seat left. Yours.",
-        synopsis:
-          "Locked in an old cinema after the midnight screening, five strangers realize the film on screen is showing what happens next.",
-        backdropUrl: "/films/one-seat-left.svg",
-        featuredRank: 4,
-      },
-      {
-        slug: "saltwater-kings",
-        title: "Saltwater Kings",
-        runtimeMinutes: 124,
-        rating: "PG-13",
-        genre: "Adventure",
-        tagline: "The bay gives. The bay takes back.",
-        synopsis:
-          "Two estranged brothers inherit their father's failing oyster boat and one summer to save it, racing a storm, a rival crew and each other across the bay.",
-        backdropUrl: "/films/saltwater-kings.svg",
-        featuredRank: 5,
-      },
-      {
-        slug: "the-quiet-frequency",
-        title: "The Quiet Frequency",
-        runtimeMinutes: 109,
-        rating: "PG-13",
-        genre: "Mystery",
-        tagline: "Tonight's caller already knows tomorrow.",
-        synopsis:
-          "A late-night radio host starts taking calls from a listener who describes tomorrow's headlines in perfect detail — including one about the host.",
-        backdropUrl: "/films/the-quiet-frequency.svg",
-        featuredRank: null,
-      },
-      {
-        slug: "hollow-pines",
-        title: "Hollow Pines",
-        runtimeMinutes: 98,
-        rating: "R",
-        genre: "Horror",
-        tagline: "Every night, the trees lean closer.",
-        synopsis:
-          "A family's fresh start in a mountain cabin unravels when they notice the forest around it moves a little nearer each morning.",
-        backdropUrl: "/films/hollow-pines.svg",
-        featuredRank: null,
-      },
-      {
-        slug: "second-chair",
-        title: "Second Chair",
-        runtimeMinutes: 101,
-        rating: "PG-13",
-        genre: "Comedy",
-        tagline: "Always the runner-up. Not this time.",
-        synopsis:
-          "A violinist who has played second chair for twenty years enters a regional competition — and finds herself up against the student she once taught.",
-        backdropUrl: "/films/second-chair.svg",
-        featuredRank: null,
-      },
-      {
-        slug: "ember-and-frost",
-        title: "Ember & Frost",
-        runtimeMinutes: 92,
-        rating: "PG",
-        genre: "Animation",
-        tagline: "Opposites thaw.",
-        synopsis:
-          "A runaway fire sprite and a stubborn snow spirit must cross the mountains together before the turning of the season traps them both.",
-        backdropUrl: "/films/ember-and-frost.svg",
-        featuredRank: null,
-      },
-    ])
+    .values(FILMS)
     .returning();
 
   // Screens grouped by theater, so films can rotate by theater, screen, time and day.
@@ -298,77 +424,13 @@ async function main() {
     sql`SELECT count(*)::text AS count FROM showing_seats`,
   )).rows as [{ count: string }];
 
-  const booked = await seedDemoBookings();
+  const booked = await seedDemoBookings(db);
   console.log(
     `Seeded ${insertedLocations.length} locations, ${insertedScreens.length} screens, ` +
       `${insertedFilms.length} films, ${showingRows.length} showings, ${count} showing seats, ` +
       `${booked} booked seats.`,
   );
-
-  console.log("Creating staff accounts and their action history…");
-  const staff = await seedStaff(createRandom(RANDOM_SEED + 1));
-  console.log(
-    `Seeded staff: ${staff.counts.admin} admins, ${staff.counts.privileged} privileged, ` +
-      `${staff.counts.viewer} viewers, ${staff.actions} logged actions.`,
-  );
-  console.log(
-    `\nStaff sign-in at /staff as "${staff.adminUsername}"` +
-      (staff.adminPassword ? ` with password: ${staff.adminPassword}` : " (password from .env)"),
-  );
-  console.log(
-    "Other staff accounts use " +
-      (staff.demoPassword ? `the password: ${staff.demoPassword}` : "STAFF_DEMO_PASSWORD from .env") +
-      " (usernames are on the Admin tab).",
-  );
-  console.log(
-    `Discount codes: ${process.env.COMP_DISCOUNT_CODE ? "COMP_DISCOUNT_CODE from .env" : compCode} (100% off), ` +
-      "MATINEE20 (20% off), EXPIRED10 (expired, for testing).",
-  );
-}
-
-/** Fill upcoming showings with demo bookings (see the BUSY_* and LIGHT_* settings above). */
-async function seedDemoBookings(): Promise<number> {
-  console.log("Creating demo bookings…");
-  const random = createRandom(RANDOM_SEED);
-  const today = cinemaDate(new Date());
-  const lightEnd = cinemaDate(new Date(Date.now() + LIGHT_WINDOW_DAYS * 86_400_000));
-  const windowEnd = lightEnd > BUSY_END ? lightEnd : BUSY_END;
-
-  const seatRows = await db
-    .select({ id: seats.id, screenId: seats.screenId, rowLabel: seats.rowLabel, number: seats.number, x: seats.x, type: seats.type })
-    .from(seats);
-  const seatsByScreen = new Map<string, SeedSeat[]>();
-  for (const seat of seatRows) seatsByScreen.set(seat.screenId, [...(seatsByScreen.get(seat.screenId) ?? []), seat]);
-
-  const upcoming = await db.execute<{ id: string; screen_id: string; starts_at: Date; local_date: string; local_time: string }>(sql`
-    SELECT id, screen_id, starts_at,
-           to_char(starts_at AT TIME ZONE ${CINEMA_TIME_ZONE}, 'YYYY-MM-DD') AS local_date,
-           to_char(starts_at AT TIME ZONE ${CINEMA_TIME_ZONE}, 'HH24:MI') AS local_time
-      FROM showings
-     WHERE starts_at > now()
-       AND (starts_at AT TIME ZONE ${CINEMA_TIME_ZONE})::date <= ${windowEnd}::date
-     ORDER BY starts_at
-  `);
-
-  const plan = upcoming.rows.flatMap((row) => {
-    const isBusy = row.local_date >= BUSY_START && row.local_date <= BUSY_END;
-    const isLight = !isBusy && row.local_date >= today && row.local_date <= lightEnd;
-    if (!isBusy && !isLight) return [];
-
-    let occupancy: number;
-    if (isBusy) {
-      const soldOutChance = EXTRA_TIMES.includes(row.local_time) ? EXTRA_SOLD_OUT_CHANCE : BUSY_SOLD_OUT_CHANCE;
-      occupancy = random.chance(soldOutChance) ? 1 : random.between(...BUSY_OCCUPANCY);
-    } else {
-      const weekday = new Date(`${row.local_date}T12:00:00Z`).getUTCDay();
-      occupancy = random.between(...LIGHT_OCCUPANCY) + (weekday === 5 || weekday === 6 ? WEEKEND_BONUS : 0);
-    }
-
-    const showing: SeedShowing = { id: row.id, screenId: row.screen_id, startsAt: new Date(row.starts_at) };
-    return [{ showing, groups: chooseBookedGroups(seatsByScreen.get(row.screen_id) ?? [], occupancy, random) }];
-  });
-
-  return insertBookings(db, plan, random, await db.select().from(ticketTypes));
+  return { compCode };
 }
 
 main()

@@ -9,7 +9,7 @@ CREATE TABLE "discount_codes" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "bookings" ADD COLUMN "confirmation_code" text DEFAULT 'MQ' || upper(substr(md5(gen_random_uuid()::text), 1, 8)) NOT NULL;--> statement-breakpoint
+ALTER TABLE "bookings" ADD COLUMN "confirmation_code" text DEFAULT 'MQ' || upper(substr(md5(gen_random_uuid()::text), 1, 12)) NOT NULL;--> statement-breakpoint
 ALTER TABLE "bookings" ADD COLUMN "discount_code" text;--> statement-breakpoint
 ALTER TABLE "bookings" ADD COLUMN "discount_cents" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_discount_code_discount_codes_code_fk" FOREIGN KEY ("discount_code") REFERENCES "public"."discount_codes"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

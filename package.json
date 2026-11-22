@@ -17,7 +17,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/db/seed.ts",
+    "db:reset": "tsx src/db/seed.ts --reset",
     "db:studio": "drizzle-kit studio",
+    "staff:reset-admin": "tsx src/db/reset-admin.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

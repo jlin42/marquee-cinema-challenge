@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { focusRing } from "@/components/ui/icon-button";
 import { CancelBookingButton } from "./cancel-booking-button";
+import { BookingSearch } from "./booking-search";
 import { DashboardFilters } from "./dashboard-filters";
 import type { DashboardVM, StaffSeatVM } from "./dashboard-view-model";
 
@@ -14,6 +15,7 @@ export function DashboardScreen({ vm }: { vm: DashboardVM }) {
           {vm.notice}
         </p>
       )}
+      <BookingSearch search={vm.search} />
       <DashboardFilters filters={vm.filters} />
 
       {!vm.showing ? (
@@ -113,7 +115,7 @@ function BookingsTable({
   return (
     <section aria-labelledby="bookings-title" className="min-w-0">
       <h2 id="bookings-title" className="mb-3 text-lg font-semibold text-white">
-        Bookings <span className="text-neutral-500">({bookings.length})</span>
+        Bookings <span className="text-neutral-500">({bookings.length}, newest first)</span>
       </h2>
       {bookings.length === 0 ? (
         <p className="rounded-xl bg-white/[0.03] px-4 py-8 text-center text-sm text-neutral-400">No bookings yet.</p>
@@ -125,7 +127,7 @@ function BookingsTable({
                 <th scope="col" className="px-4 py-3 font-medium">Booker</th>
                 <th scope="col" className="px-4 py-3 font-medium">Seats</th>
                 <th scope="col" className="px-4 py-3 text-right font-medium">Total</th>
-                <th scope="col" className="px-4 py-3 font-medium">Ref</th>
+                <th scope="col" className="px-4 py-3 font-medium">Confirmation</th>
                 {canManage && (
                   <th scope="col" className="px-4 py-3 text-right font-medium">
                     <span className="sr-only">Actions</span>
@@ -137,13 +139,20 @@ function BookingsTable({
               {bookings.map((b) => (
                 <tr key={b.id} className="align-top hover:bg-white/[0.03]">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-white">{b.customerName}</p>
+                    <p className="flex items-center gap-2 font-medium text-white">
+                      {b.customerName}
+                      {b.isRecent && (
+                        <span className="rounded-full bg-marquee-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-marquee-400">
+                          New
+                        </span>
+                      )}
+                    </p>
                     <p className="text-neutral-400">{b.email}</p>
                     <p className="mt-0.5 text-xs text-neutral-500">{b.bookedAt}</p>
                   </td>
                   <td className="px-4 py-3 text-neutral-300">{b.seats}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-neutral-200">{b.total}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-neutral-400">{b.reference}</td>
+                  <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-neutral-400">{b.reference}</td>
                   {canManage && (
                     <td className="px-4 py-2 text-right">
                       <div className="flex flex-col items-end gap-1">

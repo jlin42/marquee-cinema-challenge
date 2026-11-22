@@ -5,9 +5,9 @@
  *
  * Deterministic: a fixed random seed gives the same data on every run.
  */
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import type { Db } from "./client";
+import type { DbOrTx } from "./client";
 import { bookings, bookingSeats, holds, type ticketTypes } from "./schema";
 
 export type SeedSeat = { id: string; rowLabel: string; number: number; x: number; type: "standard" | "wheelchair" | "companion" };
@@ -116,7 +116,7 @@ const LAST_NAMES = ["Carter", "Nguyen", "Patel", "Brooks", "Rivera", "Kim", "Hug
 const TICKET_MIX = ["general", "general", "general", "general", "general", "general", "general", "child", "child", "senior"] as const;
 
 export async function insertBookings(
-  db: Db,
+  db: DbOrTx,
   plan: { showing: SeedShowing; groups: string[][] }[],
   random: Random,
   priceList: (typeof ticketTypes.$inferSelect)[],
@@ -126,6 +126,16 @@ export async function insertBookings(
   const bookingRows: (typeof bookings.$inferInsert)[] = [];
   const seatRows: (typeof bookingSeats.$inferInsert & { holdId: string })[] = [];
   let guest = 0;
+  // Confirmation numbers are set here (12 hex digits, unique within the run) rather than
+  // left to the column default, so a large seed never trips the unique constraint.
+  const usedCodes = new Set<string>();
+  const newCode = () => {
+    let code: string;
+    do code = `MQ${randomBytes(6).toString("hex").toUpperCase()}`;
+    while (usedCodes.has(code));
+    usedCodes.add(code);
+    return code;
+  };
 
   for (const { showing, groups } of plan) {
     for (const seatIds of groups) {
@@ -163,6 +173,7 @@ export async function insertBookings(
         id: bookingId,
         showingId: showing.id,
         holdId,
+        confirmationCode: newCode(),
         customerName: `${first} ${last}`,
         email: `${first}.${last}${++guest}@example.com`.toLowerCase(),
         totalCents,

@@ -1,11 +1,12 @@
 import { formatCents } from "@/lib/money";
 import { cinemaDate, dateParts, formatTime, runtimeLabel } from "@/lib/time";
 import type { Ticket } from "@/server/tickets";
+import { formatConfirmationCode } from "@/lib/confirmation-code";
 import { FAKE_QR_SIZE, fakeQrPath } from "./fake-qr";
 
 export type TicketVM = {
   confirmationCode: string;
-  /** "MQ7F-3A2D-9C" style, easier to read out at the door. */
+  /** "MQ-7F3A-2D9C-41B0": grouped so it's easy to read out at the door. */
   confirmationDisplay: string;
   isCancelled: boolean;
   greeting: string;
@@ -29,7 +30,7 @@ export function toTicketViewModel(t: Ticket): TicketVM {
 
   return {
     confirmationCode: code,
-    confirmationDisplay: code.replace(/^(.{4})(.{4})(.*)$/, "$1-$2-$3"),
+    confirmationDisplay: formatConfirmationCode(code),
     isCancelled: t.status === "cancelled",
     greeting: t.customerName ? `Enjoy the show, ${t.customerName.split(" ")[0]}.` : "Enjoy the show.",
     email: t.email,
