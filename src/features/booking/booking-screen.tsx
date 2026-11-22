@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { focusRing } from "@/components/ui/icon-button";
 import { StepLoaderOverlay } from "@/components/ui/loader";
+import { LeaveCheckoutDialog } from "./leave-checkout-dialog";
+import { useLeaveCheckoutGuard } from "./use-leave-checkout-guard";
 import type { BookingVM } from "./booking-view-model";
 import { CheckoutPanel } from "./checkout-panel";
 import { ConfirmTheaterDialog } from "./confirm-theater-dialog";
@@ -23,9 +25,20 @@ export function BookingScreen({ vm }: { vm: BookingVM }) {
     theaterConfirmed: vm.theaterConfirmed,
   });
 
+  // Leaving during checkout asks first, and cancels the hold if they go. Not while
+  // booking (isBusy): that ends on the ticket page.
+  const leaveGuard = useLeaveCheckoutGuard(booking.phase === "checkout" && !booking.isBusy ? booking.hold?.id ?? null : null);
+
   return (
     <main className="pb-32">
       <ShowingHeader vm={vm} />
+      <LeaveCheckoutDialog
+        isOpen={leaveGuard.isAsking}
+        seatLabels={booking.selectedLabels}
+        isLeaving={leaveGuard.isLeaving}
+        onStay={leaveGuard.stay}
+        onLeave={leaveGuard.leave}
+      />
       {/* Moving to the next step: holding seats, then booking (stays up until the ticket page loads). */}
       <StepLoaderOverlay
         isOpen={booking.isBusy}
