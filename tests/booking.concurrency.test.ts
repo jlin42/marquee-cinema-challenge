@@ -7,7 +7,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, pool } from "@/db/client";
 import {
   bookingSeats,
@@ -22,8 +22,8 @@ import {
   showings,
   ticketTypes,
 } from "@/db/schema";
-import { confirmHold, createHold, getSeatMap, releaseHold } from "@/server/booking";
-import { HoldExpiredError, HoldNotFoundError, InvalidDiscountError, SeatConflictError, isUniqueViolation } from "@/server/errors";
+import { confirmHold, createHold, getSeatMap, MAX_ACTIVE_HOLDS_PER_SESSION, releaseHold } from "@/server/booking";
+import { HoldExpiredError, HoldLimitError, HoldNotFoundError, InvalidDiscountError, SeatConflictError, isUniqueViolation } from "@/server/errors";
 
 const createdShowings: string[] = [];
 const createdScreens: string[] = [];
@@ -257,5 +257,43 @@ describe("discount codes", () => {
       confirmHold({ holdId: hold.id, sessionId: sid, email: "a@example.com", discountCode: "NOPE" }),
     ).rejects.toBeInstanceOf(InvalidDiscountError);
     expect(await db.select().from(bookings).where(eq(bookings.holdId, hold.id))).toHaveLength(0);
+  });
+});
+
+describe("hold limits per visitor", () => {
+  it(`one visitor can hold seats for at most ${MAX_ACTIVE_HOLDS_PER_SESSION} showings at once`, async () => {
+    const sid = session();
+    const others = await Promise.all(Array.from({ length: MAX_ACTIVE_HOLDS_PER_SESSION }, () => makeShowing()));
+    for (const o of others) await createHold({ showingId: o.showingId, seatIds: [o.seatIds[0]!], sessionId: sid });
+
+    await expect(createHold({ showingId: fx.showingId, seatIds: [fx.seatIds[0]!], sessionId: sid })).rejects.toBeInstanceOf(HoldLimitError);
+
+    // Finishing (or cancelling) one checkout frees a slot.
+    const [first] = await db.select().from(holds).where(eq(holds.sessionId, sid));
+    await releaseHold({ holdId: first!.id, sessionId: sid });
+    await expect(createHold({ showingId: fx.showingId, seatIds: [fx.seatIds[0]!], sessionId: sid })).resolves.toBeDefined();
+  });
+
+  it("re-holding the same showing replaces the earlier hold instead of stacking seats", async () => {
+    const sid = session();
+    await createHold({ showingId: fx.showingId, seatIds: fx.seatIds.slice(0, 3), sessionId: sid });
+    const second = await createHold({ showingId: fx.showingId, seatIds: fx.seatIds.slice(2, 5), sessionId: sid });
+
+    const held = await db
+      .select({ seatId: showingSeats.seatId, holdId: showingSeats.holdId })
+      .from(showingSeats)
+      .where(and(eq(showingSeats.showingId, fx.showingId), eq(showingSeats.status, "held")));
+    expect(held.map((h) => h.seatId).sort()).toEqual(fx.seatIds.slice(2, 5));
+    expect(new Set(held.map((h) => h.holdId))).toEqual(new Set([second.id]));
+  });
+
+  it("the limit holds even when one visitor fires many holds at the same moment", async () => {
+    const sid = session();
+    const targets = await Promise.all(Array.from({ length: 6 }, () => makeShowing()));
+    const results = await Promise.allSettled(
+      targets.map((t) => createHold({ showingId: t.showingId, seatIds: [t.seatIds[0]!], sessionId: sid })),
+    );
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(MAX_ACTIVE_HOLDS_PER_SESSION);
+    for (const r of results) if (r.status === "rejected") expect(r.reason).toBeInstanceOf(HoldLimitError);
   });
 });

@@ -30,7 +30,8 @@ export type StaffBookingVM = {
   reference: string;
   customerName: string;
   email: string;
-  seats: string; // "E5 (Child), E6 (General)"
+  seats: string; // "E5, E6"
+  tickets: string; // "1 Child · 1 General"
   total: string;
   bookedAt: string;
   /** Booked in the last 24 hours (shown with a "New" badge). */
@@ -154,7 +155,7 @@ async function toShowingDetail(
   ]);
 
   // Group ticket lines into bookings.
-  const byBooking = new Map<string, { name: string; email: string; totalCents: number; createdAt: Date; code: string; seats: string[] }>();
+  const byBooking = new Map<string, { name: string; email: string; totalCents: number; createdAt: Date; code: string; seats: string[]; types: string[] }>();
   for (const r of bookingRows) {
     const b = byBooking.get(r.bookingId) ?? {
       name: r.customerName ?? "(no name)",
@@ -163,8 +164,10 @@ async function toShowingDetail(
       createdAt: r.createdAt,
       code: r.confirmationCode,
       seats: [],
+      types: [],
     };
-    b.seats.push(`${r.rowLabel}${r.number} (${TICKET_LABEL[r.ticketType]})`);
+    b.seats.push(`${r.rowLabel}${r.number}`);
+    b.types.push(TICKET_LABEL[r.ticketType]);
     byBooking.set(r.bookingId, b);
   }
 
@@ -213,6 +216,7 @@ async function toShowingDetail(
       customerName: b.name,
       email: b.email,
       seats: b.seats.join(", "),
+      tickets: summarizeTickets(b.types),
       total: formatCents(b.totalCents),
       bookedAt: stamp(b.createdAt),
       isRecent: Date.now() - b.createdAt.getTime() < 24 * 3_600_000,
@@ -246,4 +250,11 @@ async function toSearchVM(find: string | undefined, showContact: boolean): Promi
       };
     }),
   };
+}
+
+/** ["General", "Child", "General"] → "2 General · 1 Child" */
+function summarizeTickets(types: string[]) {
+  const counts = new Map<string, number>();
+  for (const t of types) counts.set(t, (counts.get(t) ?? 0) + 1);
+  return [...counts].map(([t, n]) => `${n} ${t}`).join(" · ");
 }

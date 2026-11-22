@@ -41,7 +41,7 @@ export function BookingSearch({ search }: { search: BookingSearchVM }) {
               : `${search.results.length}${search.results.length === 25 ? "+" : ""} booking${search.results.length === 1 ? "" : "s"} match “${search.query}” (newest first)`}
           </p>
           {search.results.length > 0 && (
-            <ul className="max-h-80 divide-y divide-white/5 overflow-auto">
+            <ul className="divide-y divide-white/5">
               {search.results.map((r) => (
                 <li key={r.id}>
                   <Link href={r.href} className={`flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 px-4 py-3 text-sm hover:bg-white/[0.04] ${focusRing}`}>

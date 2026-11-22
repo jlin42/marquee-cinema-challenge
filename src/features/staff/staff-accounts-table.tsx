@@ -27,9 +27,9 @@ export function StaffAccountsTable({ vm }: { vm: AdminVM }) {
         <p className="text-xs text-neutral-500">{vm.counts}</p>
       </div>
 
-      <div className="max-h-[42rem] overflow-auto rounded-xl border border-white/10">
+      <div className="overflow-hidden rounded-xl border border-white/10">
         <table className="w-full text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-neutral-900 text-xs uppercase tracking-wider text-neutral-400">
+          <thead className="bg-neutral-900 text-xs uppercase tracking-wider text-neutral-400">
             <tr>
               <th scope="col" className="px-4 py-3 font-medium">User</th>
               <th scope="col" className="px-4 py-3 font-medium">Role</th>

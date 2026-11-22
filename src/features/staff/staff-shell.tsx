@@ -24,7 +24,7 @@ export function StaffShell({
   return (
     <div className="min-h-screen">
       <header className="border-b border-white/10 bg-neutral-950">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 pt-4 sm:px-8">
+        <div className="flex items-center justify-between gap-4 px-4 pt-4 sm:px-8">
           <p className="font-display text-2xl tracking-[0.2em] text-white">
             Marquee<span className="text-marquee-400">.</span>
             <span className="ml-3 align-middle font-sans text-xs font-semibold uppercase tracking-widest text-neutral-500">Staff</span>
@@ -40,7 +40,7 @@ export function StaffShell({
             </form>
           </div>
         </div>
-        <nav aria-label="Staff" className="mx-auto mt-3 flex max-w-7xl gap-1 px-4 sm:px-8">
+        <nav aria-label="Staff" className="mt-3 flex gap-1 px-4 sm:px-8">
           {TABS.filter((t) => can(staff, t.permission)).map((t) => {
             const active = t.href === activeHref;
             return (
@@ -58,7 +58,8 @@ export function StaffShell({
           })}
         </nav>
       </header>
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8">{children}</div>
+      {/* Full width: staff screens are data-heavy, so they use the whole window. */}
+      <div className="px-4 py-8 sm:px-8">{children}</div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { confirmHold } from "@/server/booking";
 import { DiscountCodeInput } from "@/server/discounts";
+import { guardBookingRequest } from "@/server/abuse";
 import { handle, parseBody, Uuid } from "@/server/http";
 import { TICKET_TYPE_CODES } from "@/server/pricing";
 import { getOrCreateSessionId } from "@/server/session";
@@ -21,6 +22,7 @@ const Body = z.object({
  * Idempotent: repeating it returns the same booking. 201, or 410 if the hold expired.
  */
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
+  await guardBookingRequest(req); // penalty box for clients hammering bookings
   const holdId = Uuid.parse((await ctx.params).id);
   const { name, email, tickets, discountCode } = await parseBody(req, Body);
   const sessionId = await getOrCreateSessionId();

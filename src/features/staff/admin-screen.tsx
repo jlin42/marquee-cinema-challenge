@@ -27,7 +27,7 @@ export function AdminScreen({ vm }: { vm: AdminVM }) {
           {vm.history.entries.length === 0 ? (
             <p className="rounded-xl bg-white/[0.03] px-4 py-8 text-center text-sm text-neutral-400">No actions yet.</p>
           ) : (
-            <ol className="max-h-[42rem] divide-y divide-white/5 overflow-auto rounded-xl border border-white/10">
+            <ol className="divide-y divide-white/5 rounded-xl border border-white/10">
               {vm.history.entries.map((e) => (
                 <li key={e.id} className="px-4 py-3 text-sm">
                   <p className="flex flex-wrap items-baseline justify-between gap-2">

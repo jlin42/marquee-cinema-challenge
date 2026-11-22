@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { checkDiscount, DiscountCodeInput } from "@/server/discounts";
+import { guardBookingRequest } from "@/server/abuse";
 import { handle, parseBody } from "@/server/http";
 
 const Body = z.object({ code: DiscountCodeInput });
@@ -10,6 +11,7 @@ const Body = z.object({ code: DiscountCodeInput });
  * Production: rate-limit this per IP/session so codes can't be guessed by brute force.
  */
 export const POST = handle(async (req: Request) => {
+  await guardBookingRequest(req); // penalty box for clients hammering bookings
   const { code } = await parseBody(req, Body);
   return Response.json({ discount: await checkDiscount(code) });
 });

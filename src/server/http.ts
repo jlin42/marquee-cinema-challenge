@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { BookingError, SeatConflictError } from "./errors";
+import { BookingError, SeatConflictError, TooManyRequestsError } from "./errors";
 
 /** Consistent JSON error shape: { error: { code, message, ...details } } */
-export function errorResponse(status: number, code: string, message: string, details?: object) {
-  return Response.json({ error: { code, message, ...details } }, { status });
+export function errorResponse(status: number, code: string, message: string, details?: object, headers?: HeadersInit) {
+  return Response.json({ error: { code, message, ...details } }, { status, headers });
 }
 
 /** Wraps a route handler: maps domain and validation errors to HTTP responses. */
@@ -12,6 +12,11 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
     try {
       return await fn(...args);
     } catch (err) {
+      if (err instanceof TooManyRequestsError) {
+        return errorResponse(err.status, err.code, err.message, { retryAfterSeconds: err.retryAfterSeconds }, {
+          "Retry-After": String(err.retryAfterSeconds),
+        });
+      }
       if (err instanceof BookingError) {
         const details = err instanceof SeatConflictError ? { seatIds: err.seatIds } : undefined;
         return errorResponse(err.status, err.code, err.message, details);

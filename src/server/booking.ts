@@ -23,6 +23,7 @@ import { findUsableDiscount } from "./discounts";
 import { env } from "@/env";
 import {
   HoldExpiredError,
+  HoldLimitError,
   HoldNotFoundError,
   InvalidTicketsError,
   SeatConflictError,
@@ -32,6 +33,13 @@ import {
 import { applyDiscount, listTicketTypes, priceTickets, type TicketTypeCode } from "./pricing";
 
 export const MAX_SEATS_PER_HOLD = 10;
+/**
+ * Showings one browser session can hold seats for at the same time. With one hold per
+ * showing (a new hold replaces the old one) and 10 seats per hold, a session can tie up
+ * at most 20 seats at any moment. Per-IP limits and bot protection sit in front of this
+ * in production (cookies can be discarded).
+ */
+export const MAX_ACTIVE_HOLDS_PER_SESSION = 2;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -63,20 +71,52 @@ export async function createHold(input: {
   return db.transaction(async (tx) => {
     await assertShowingOpen(tx, input.showingId);
 
-    // 1. Lock the requested seat rows in a fixed order.
-    const locked = await tx.execute<{ seat_id: string; free: boolean }>(sql`
+    // 0. One hold-change at a time per session, so two tabs (or a script) can't race
+    //    past the limit below. Transaction-scoped: released at commit/rollback.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"hold:" + input.sessionId}, 0))`);
+
+    // This session's live holds. A hold for this same showing gets replaced, so it
+    // doesn't count toward the limit.
+    const active = await tx.execute<{ id: string; showing_id: string }>(sql`
+      SELECT h.id, h.showing_id
+        FROM holds h
+       WHERE h.session_id = ${input.sessionId}
+         AND h.expires_at > now()
+         AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.hold_id = h.id)
+    `);
+    const replaced = active.rows.filter((h) => h.showing_id === input.showingId).map((h) => h.id);
+    const others = active.rows.length - replaced.length;
+    if (others >= MAX_ACTIVE_HOLDS_PER_SESSION) throw new HoldLimitError(MAX_ACTIVE_HOLDS_PER_SESSION);
+
+    // 1. Lock the requested seats, plus any this session holds for the showing (they're
+    //    about to be released), in one fixed order so concurrent requests can't deadlock.
+    const replacedHeld = replaced.length ? sql`OR (hold_id IN (${uuidList(replaced)}) AND status = 'held')` : sql``;
+    const locked = await tx.execute<{ seat_id: string; free: boolean; requested: boolean }>(sql`
       SELECT seat_id,
-             (status = 'available' OR (status = 'held' AND hold_expires_at <= now())) AS free
+             (status = 'available'
+               OR (status = 'held' AND hold_expires_at <= now())
+               ${replacedHeld}) AS free,
+             seat_id IN (${uuidList(seatIds)}) AS requested
         FROM showing_seats
        WHERE showing_id = ${input.showingId}::uuid
-         AND seat_id IN (${uuidList(seatIds)})
+         AND (seat_id IN (${uuidList(seatIds)}) ${replacedHeld})
        ORDER BY seat_id
          FOR UPDATE
     `);
 
-    const freeIds = new Set(locked.rows.filter((r) => r.free).map((r) => r.seat_id));
+    const freeIds = new Set(locked.rows.filter((r) => r.requested && r.free).map((r) => r.seat_id));
     const conflicts = seatIds.filter((id) => !freeIds.has(id));
     if (conflicts.length > 0) throw new SeatConflictError(conflicts);
+
+    // Release the session's previous hold on this showing (its seats are locked above).
+    if (replaced.length) {
+      await tx.execute(sql`
+        UPDATE showing_seats
+           SET status = 'available', hold_id = NULL, hold_expires_at = NULL
+         WHERE hold_id IN (${uuidList(replaced)}) AND status = 'held'
+      `);
+      await tx.execute(sql`UPDATE holds SET expires_at = now() WHERE id IN (${uuidList(replaced)})`);
+    }
 
     // 2. Create the hold; expiry is computed by the database clock.
     const [hold] = await tx

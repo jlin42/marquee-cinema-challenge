@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createHold, MAX_SEATS_PER_HOLD, releaseHold } from "@/server/booking";
+import { guardBookingRequest } from "@/server/abuse";
 import { handle, parseBody, Uuid } from "@/server/http";
 import { getOrCreateSessionId } from "@/server/session";
 import { getActiveHold } from "@/server/showings";
@@ -11,6 +12,7 @@ const Body = z.object({
 
 /** POST /api/holds — hold seats for this browser session. 201, or 409 with the conflicting seatIds. */
 export const POST = handle(async (req: Request) => {
+  await guardBookingRequest(req); // penalty box for clients hammering bookings
   const { showingId, seatIds } = await parseBody(req, Body);
   const sessionId = await getOrCreateSessionId();
 

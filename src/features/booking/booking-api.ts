@@ -34,11 +34,17 @@ async function request<T>(url: string, init?: RequestInit): Promise<Result<T>> {
     if (res.status === 204) return { ok: true, data: undefined as T };
     const body = await res.json().catch(() => null);
     if (res.ok) return { ok: true, data: body as T };
-    return {
-      ok: false,
-      status: res.status,
-      error: body?.error ?? { code: "INTERNAL", message: "Something went wrong. Please try again." },
-    };
+    if (body?.error) return { ok: false, status: res.status, error: body.error };
+    // No error body of ours: the request was stopped before reaching the app, e.g. by
+    // the Vercel Firewall's rate limit during a rush (429, or 403 if the rule denies).
+    if (res.status === 429 || res.status === 403) {
+      return {
+        ok: false,
+        status: res.status,
+        error: { code: "RATE_LIMITED", message: "Lots of people are booking right now. Please wait a minute and try again." },
+      };
+    }
+    return { ok: false, status: res.status, error: { code: "INTERNAL", message: "Something went wrong. Please try again." } };
   } catch {
     return { ok: false, status: 0, error: { code: "NETWORK", message: "You appear to be offline. Please try again." } };
   }

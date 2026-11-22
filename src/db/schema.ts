@@ -292,3 +292,30 @@ export const staffActions = pgTable(
     index("staff_actions_created_idx").on(t.createdAt),
   ],
 );
+
+// ---------- Abuse protection ----------
+
+/**
+ * Booking requests per client (IP) per one-minute window. Rows older than a few
+ * minutes are pruned as requests come in.
+ */
+export const requestCounters = pgTable(
+  "request_counters",
+  {
+    key: text("key").notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.windowStart] })],
+);
+
+/**
+ * Temporary blocks for clients that hammered the booking endpoints. `strikes` makes
+ * each repeat block longer.
+ */
+export const ipBlocks = pgTable("ip_blocks", {
+  ip: text("ip").primaryKey(),
+  blockedUntil: timestamp("blocked_until", { withTimezone: true }).notNull(),
+  strikes: integer("strikes").notNull().default(1),
+  lastBlockedAt: timestamp("last_blocked_at", { withTimezone: true }).notNull().defaultNow(),
+});

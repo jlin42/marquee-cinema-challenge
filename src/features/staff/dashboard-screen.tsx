@@ -39,7 +39,7 @@ export function DashboardScreen({ vm }: { vm: DashboardVM }) {
             </dl>
           </section>
 
-          <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
             <section aria-label="Seat map" className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
               <StaffSeatMap columns={vm.showing.columns} rows={vm.showing.rows} seats={vm.showing.seats} />
               <Legend />
@@ -62,15 +62,17 @@ function StaffSeatMap({ columns, rows, seats }: { columns: number; rows: { y: nu
   const seatRows = new Set(rows.map((r) => r.y));
   const lastY = Math.max(-1, ...rows.map((r) => r.y));
   return (
-    <div className="overflow-x-auto">
+    // Seats scale with the panel (no horizontal scrolling): each column is a fraction of
+    // the width, capped at 1.75rem, and seats stay square.
+    <div className="mx-auto w-full" style={{ maxWidth: `calc(1.25rem + ${columns} * 1.75rem + ${columns} * 0.25rem)` }}>
       <p aria-hidden className="mx-auto mb-4 w-3/4 border-t-4 border-marquee-400/70 pt-1 text-center text-[11px] uppercase tracking-[0.4em] text-neutral-500">
         Screen
       </p>
       <div
-        className="mx-auto grid w-fit gap-1"
+        className="grid w-full gap-[3px] sm:gap-1"
         style={{
-          gridTemplateColumns: `1.25rem repeat(${columns}, 1.5rem)`,
-          gridTemplateRows: Array.from({ length: lastY + 1 }, (_, y) => (seatRows.has(y) ? "1.5rem" : "1rem")).join(" "),
+          gridTemplateColumns: `1.25rem repeat(${columns}, minmax(0, 1fr))`,
+          gridTemplateRows: Array.from({ length: lastY + 1 }, (_, y) => (seatRows.has(y) ? "auto" : "0.75rem")).join(" "),
         }}
       >
         {rows.map((r) => (
@@ -84,9 +86,9 @@ function StaffSeatMap({ columns, rows, seats }: { columns: number; rows: { y: nu
             title={s.tooltip}
             aria-label={s.tooltip}
             style={{ gridColumn: s.x + 2, gridRow: s.y + 1 }}
-            className={`flex items-center justify-center rounded-t-md rounded-b-sm ${SEAT_COLOR[s.state]}`}
+            className={`flex aspect-square items-center justify-center rounded-t-md rounded-b-sm ${SEAT_COLOR[s.state]}`}
           >
-            {s.isWheelchair && <Icon name="wheelchair" className="h-3 w-3" />}
+            {s.isWheelchair && <Icon name="wheelchair" className="h-3/5 w-3/5" />}
           </span>
         ))}
       </div>
@@ -120,9 +122,9 @@ function BookingsTable({
       {bookings.length === 0 ? (
         <p className="rounded-xl bg-white/[0.03] px-4 py-8 text-center text-sm text-neutral-400">No bookings yet.</p>
       ) : (
-        <div className="max-h-[36rem] overflow-auto rounded-xl border border-white/10">
+        <div className="overflow-hidden rounded-xl border border-white/10">
           <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-neutral-900 text-xs uppercase tracking-wider text-neutral-400">
+            <thead className="bg-neutral-900 text-xs uppercase tracking-wider text-neutral-400">
               <tr>
                 <th scope="col" className="px-4 py-3 font-medium">Booker</th>
                 <th scope="col" className="px-4 py-3 font-medium">Seats</th>
@@ -147,12 +149,15 @@ function BookingsTable({
                         </span>
                       )}
                     </p>
-                    <p className="text-neutral-400">{b.email}</p>
+                    <p className="break-all text-neutral-400">{b.email}</p>
                     <p className="mt-0.5 text-xs text-neutral-500">{b.bookedAt}</p>
                   </td>
-                  <td className="px-4 py-3 text-neutral-300">{b.seats}</td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-neutral-200">{b.seats}</p>
+                    <p className="text-xs text-neutral-500">{b.tickets}</p>
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums text-neutral-200">{b.total}</td>
-                  <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-neutral-400">{b.reference}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-neutral-400">{b.reference}</td>
                   {canManage && (
                     <td className="px-4 py-2 text-right">
                       <div className="flex flex-col items-end gap-1">

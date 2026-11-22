@@ -18,6 +18,32 @@ export class SeatConflictError extends BookingError {
   }
 }
 
+/**
+ * The visitor already holds seats for the maximum number of showings. 429
+ * Stops one browser from tying up a sell-out showing's seats during checkout.
+ */
+export class HoldLimitError extends BookingError {
+  constructor(readonly limit: number) {
+    super(
+      `You already have seats held for ${limit} other showings. Finish or cancel one of those checkouts first.`,
+      429,
+      "HOLD_LIMIT",
+    );
+  }
+}
+
+/** This client sent far too many booking requests and is blocked for a while. 429 */
+export class TooManyRequestsError extends BookingError {
+  constructor(readonly retryAfterSeconds: number) {
+    const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
+    super(
+      `Too many booking attempts from your network. Please try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+      429,
+      "RATE_LIMITED",
+    );
+  }
+}
+
 /** The hold doesn't exist or belongs to another session. 404 */
 export class HoldNotFoundError extends BookingError {
   constructor() {
