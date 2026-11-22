@@ -1,9 +1,51 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 const MOTIFS = ["ticket", "seat", "popcorn", "reel"] as const;
 type Motif = (typeof MOTIFS)[number];
+const randomMotif = (): Motif => MOTIFS[Math.floor(Math.random() * MOTIFS.length)]!;
+
+/** Every loading animation stays up at least this long, so it never just flickers. */
+export const MIN_LOADER_MS = 1200;
+
+/**
+ * Keeps `isOpen` true for at least MIN_LOADER_MS after it first turns on, then follows
+ * it. Used by in-page step loaders.
+ */
+export function useMinimumVisible(isOpen: boolean, minMs = MIN_LOADER_MS) {
+  const [openedAt, setOpenedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (isOpen && openedAt === null) setOpenedAt(Date.now());
+    if (!isOpen && openedAt !== null) {
+      const remaining = openedAt + minMs - Date.now();
+      if (remaining <= 0) {
+        setOpenedAt(null);
+        return;
+      }
+      const t = setTimeout(() => setOpenedAt(null), remaining);
+      return () => clearTimeout(t);
+    }
+  }, [isOpen, openedAt, minMs]);
+  return isOpen || openedAt !== null;
+}
+
+/*
+ * Route loaders (loading.tsx) unmount the moment the next page is ready. To still show
+ * them for MIN_LOADER_MS, each one registers here, and <RouteLoaderHold/> (in the root
+ * layout) keeps an identical full-screen loader up for whatever time is left.
+ */
+type RouteLoaderState = { until: number; motif: Motif; caption?: string } | null;
+let routeLoader: RouteLoaderState = null;
+const listeners = new Set<() => void>();
+const setRouteLoader = (next: RouteLoaderState) => {
+  routeLoader = next;
+  for (const l of listeners) l();
+};
+const subscribe = (l: () => void) => {
+  listeners.add(l);
+  return () => listeners.delete(l);
+};
 
 /**
  * Loading indicator: a short spinning ring with a small animated cinema motif in the
@@ -11,15 +53,30 @@ type Motif = (typeof MOTIFS)[number];
  * mount so server and client markup match. It fades in after ~120 ms, so quick steps
  * don't flash a spinner.
  */
-export function Loader({ label = "Loading", caption, size = "md" }: { label?: string; caption?: string; size?: "md" | "lg" }) {
-  const [motif, setMotif] = useState<Motif | null>(null);
+export function Loader({
+  label = "Loading",
+  caption,
+  size = "md",
+  motif: fixedMotif,
+  appear = true,
+}: {
+  label?: string;
+  caption?: string;
+  size?: "md" | "lg";
+  /** Use this motif instead of a random one (keeps a held loader looking the same). */
+  motif?: Motif;
+  /** Fade in after a moment (off when continuing a loader that's already showing). */
+  appear?: boolean;
+}) {
+  const [randomPick, setRandomPick] = useState<Motif | null>(null);
   useEffect(() => {
-    setMotif(MOTIFS[Math.floor(Math.random() * MOTIFS.length)]!);
-  }, []);
+    if (!fixedMotif) setRandomPick(randomMotif());
+  }, [fixedMotif]);
+  const motif = fixedMotif ?? randomPick;
 
   const box = size === "lg" ? "h-20 w-20" : "h-16 w-16";
   return (
-    <div role="status" aria-live="polite" className="loader-appear flex flex-col items-center gap-4">
+    <div role="status" aria-live="polite" className={`${appear ? "loader-appear" : ""} flex flex-col items-center gap-4`}>
       <div className={`relative ${box}`}>
         {/* Track and spinning arc */}
         <span className="absolute inset-0 rounded-full border-[3px] border-white/10" />
@@ -82,18 +139,58 @@ function MotifIcon({ motif }: { motif: Motif }) {
   }
 }
 
-/** Full-area loader for route transitions (used by loading.tsx files). */
+/** Full-screen loader for route transitions (used by loading.tsx files). */
 export function PageLoader({ caption }: { caption?: string }) {
+  // Pick the motif once and register, so the hold overlay can continue the same loader.
+  const [motif] = useState<Motif>(() => randomMotif());
+  useEffect(() => {
+    const until = Date.now() + MIN_LOADER_MS;
+    setRouteLoader({ until, motif, caption });
+  }, [motif, caption]);
   return (
-    <div className="flex min-h-[70vh] items-center justify-center px-6">
-      <Loader size="lg" caption={caption} />
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-neutral-950 px-6">
+      <Loader size="lg" caption={caption} motif={motif} />
     </div>
   );
 }
 
-/** Blocking overlay while a step is in progress (e.g. holding seats, booking). */
+/**
+ * Root-layout companion to PageLoader: after the route loader unmounts, keeps the same
+ * loader on screen until MIN_LOADER_MS has passed, then fades it out.
+ */
+export function RouteLoaderHold() {
+  const state = useSyncExternalStore(subscribe, () => routeLoader, () => null);
+  const [fading, setFading] = useState(false);
+  useEffect(() => {
+    if (!state) return;
+    const remaining = state.until - Date.now();
+    if (remaining <= 0) {
+      setRouteLoader(null);
+      return;
+    }
+    setFading(false);
+    const fade = setTimeout(() => setFading(true), Math.max(0, remaining - 200));
+    const done = setTimeout(() => setRouteLoader(null), remaining);
+    return () => {
+      clearTimeout(fade);
+      clearTimeout(done);
+    };
+  }, [state]);
+  if (!state) return null;
+  return (
+    <div
+      aria-hidden={fading}
+      className={`fixed inset-0 z-40 flex items-center justify-center bg-neutral-950 px-6 transition-opacity duration-200 ${fading ? "opacity-0" : "opacity-100"}`}
+    >
+      <Loader size="lg" caption={state.caption} motif={state.motif} appear={false} />
+    </div>
+  );
+}
+
+/** Blocking overlay while a step is in progress (e.g. holding seats, booking); shown at least MIN_LOADER_MS. */
 export function StepLoaderOverlay({ isOpen, caption }: { isOpen: boolean; caption: string }) {
-  if (!isOpen) return null;
+  const visible = useMinimumVisible(isOpen);
+  if (!visible) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/70 backdrop-blur-sm" aria-busy="true">
       <Loader size="lg" caption={caption} />
