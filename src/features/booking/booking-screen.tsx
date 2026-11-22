@@ -125,7 +125,14 @@ function ShowingHeader({ vm }: { vm: BookingVM }) {
           <Icon name="arrow-left" className="h-4 w-4" />
           All movies
         </Link>
-        <h1 className="font-display text-5xl tracking-wide text-white sm:text-6xl">{vm.film.title}</h1>
+        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+          <h1 className="font-display text-5xl tracking-wide text-white sm:text-6xl">{vm.film.title}</h1>
+          {/* The showing's date and time, beside the title (stays visible through checkout). */}
+          <time dateTime={vm.showtime.dateTime} className="flex flex-col items-start sm:items-end">
+            <span className="text-xs font-medium uppercase tracking-widest text-neutral-400">{vm.showtime.date}</span>
+            <span className="font-display text-4xl leading-none tracking-wide text-marquee-400 sm:text-5xl">{vm.showtime.time}</span>
+          </time>
+        </div>
         <ul className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-neutral-300">
           {vm.details.map((d) => (
             <li key={d.label} className="flex items-center gap-1.5">

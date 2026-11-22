@@ -39,6 +39,8 @@ export type BookingVM = {
   /** Skip the theater confirmation (switching showtimes within the same theater). */
   theaterConfirmed: boolean;
   when: string; // "Saturday, November 21 · 7:45 PM"
+  /** Shown beside the title so the showing is always clear, even at checkout. */
+  showtime: { date: string; time: string; dateTime: string }; // "Sat, Nov 21", "7:45 PM", ISO
   where: string; // "Norfolk Cinema · Screen 2"
   theater: { name: string; address: string };
   /** Back to this day's showtimes. */
@@ -85,6 +87,10 @@ export async function getBookingViewModel(
     showtimes: toShowtimePicker(showingId, showingDate, options.date, filmShowtimes),
     theaterConfirmed: options.theaterConfirmed ?? false,
     when: `${dateParts(cinemaDate(showing.startsAt)).long} · ${formatTime(showing.startsAt)}`,
+    showtime: (() => {
+      const p = dateParts(cinemaDate(showing.startsAt));
+      return { date: `${p.weekday}, ${p.monthShort} ${p.day}`, time: formatTime(showing.startsAt), dateTime: showing.startsAt.toISOString() };
+    })(),
     where: `${showing.location.name} · ${showing.screen.name}`,
     theater: { name: showing.location.name, address: showing.location.address ?? showing.location.city },
     showtimesHref: `/movies?date=${cinemaDate(showing.startsAt)}`,

@@ -22,6 +22,8 @@ export type StaffSeatVM = {
   y: number;
   isWheelchair: boolean;
   state: "available" | "held" | "sold";
+  /** The booking this seat belongs to (sold seats), so clicking it can show the booking. */
+  bookingId: string | null;
   tooltip: string;
 };
 
@@ -32,6 +34,8 @@ export type StaffBookingVM = {
   email: string;
   seats: string; // "E5, E6"
   tickets: string; // "1 Child · 1 General"
+  /** One line per seat: "E5", "Child". */
+  lines: { seat: string; ticket: string }[];
   total: string;
   bookedAt: string;
   /** Booked in the last 24 hours (shown with a "New" badge). */
@@ -71,6 +75,7 @@ export type DashboardVM = {
     showings: OptionVM[];
   };
   showing: {
+    id: string;
     title: string; // "Orbit of Ash · 7:45 PM"
     when: string;
     stats: { label: string; value: string }[];
@@ -183,6 +188,7 @@ async function toShowingDetail(
   };
 
   return {
+    id: showing.id,
     title: `${showing.filmTitle} · ${formatTime(showing.startsAt)}`,
     when: dateParts(cinemaDate(showing.startsAt)).long,
     stats: [
@@ -205,6 +211,7 @@ async function toShowingDetail(
         y: s.y,
         isWheelchair: s.type === "wheelchair",
         state,
+        bookingId: booking ? s.booking_id : null,
         tooltip: booking
           ? `${label} · ${booking.name} · ${booking.email}`
           : `${label} · ${state === "held" ? "held in checkout" : "available"}`,
@@ -217,6 +224,7 @@ async function toShowingDetail(
       email: b.email,
       seats: b.seats.join(", "),
       tickets: summarizeTickets(b.types),
+      lines: b.seats.map((seat, i) => ({ seat, ticket: b.types[i]! })),
       total: formatCents(b.totalCents),
       bookedAt: stamp(b.createdAt),
       isRecent: Date.now() - b.createdAt.getTime() < 24 * 3_600_000,
