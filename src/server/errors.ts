@@ -54,6 +54,13 @@ export function isUniqueViolation(err: unknown): boolean {
 }
 
 /** Ticket choices don't match the hold's seats, or name an unknown ticket type. 400 */
+/** The discount code doesn't exist, is switched off, expired or used up. 422 */
+export class InvalidDiscountError extends BookingError {
+  constructor() {
+    super("That discount code isn't valid.", 422, "DISCOUNT_INVALID");
+  }
+}
+
 export class InvalidTicketsError extends BookingError {
   constructor() {
     super("Those ticket choices don't match your seats. Please try again.", 400, "INVALID_TICKETS");

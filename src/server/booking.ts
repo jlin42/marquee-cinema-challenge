@@ -18,7 +18,8 @@
  */
 import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bookings, bookingSeats, holds, seats, showings, showingSeats } from "@/db/schema";
+import { bookings, bookingSeats, discountCodes, holds, seats, showings, showingSeats } from "@/db/schema";
+import { findUsableDiscount } from "./discounts";
 import { env } from "@/env";
 import {
   HoldExpiredError,
@@ -28,7 +29,7 @@ import {
   ShowingUnavailableError,
   isUniqueViolation,
 } from "./errors";
-import { listTicketTypes, priceTickets, type TicketTypeCode } from "./pricing";
+import { applyDiscount, listTicketTypes, priceTickets, type TicketTypeCode } from "./pricing";
 
 export const MAX_SEATS_PER_HOLD = 10;
 
@@ -131,6 +132,8 @@ export type Booking = {
   seatIds: string[];
   tickets: BookedTicket[];
   totalCents: number;
+  discountCode: string | null;
+  discountCents: number;
   createdAt: Date;
 };
 
@@ -145,6 +148,8 @@ export async function confirmHold(input: {
   /** Main ticket booker's name. */
   customerName?: string;
   tickets?: Partial<Record<string, TicketTypeCode>>;
+  /** Normalized (uppercase) discount code, if the customer entered one. */
+  discountCode?: string;
 }): Promise<Booking> {
   try {
     return await db.transaction(async (tx) => {
@@ -159,7 +164,20 @@ export async function confirmHold(input: {
       const priced = priceTickets(hold.seatIds, input.tickets ?? {}, await listTicketTypes(tx));
       if (!priced) throw new InvalidTicketsError();
 
-      // Payment for priced.totalCents would be authorized here (mocked in this demo).
+      // Discount: checked and counted here, under a row lock, so a limited code can't be
+      // over-redeemed by concurrent checkouts.
+      let discount: { code: string; percentOff: number } | null = null;
+      if (input.discountCode) {
+        discount = await findUsableDiscount(tx, input.discountCode, { lock: true });
+        await tx
+          .update(discountCodes)
+          .set({ redemptions: sql`${discountCodes.redemptions} + 1` })
+          .where(eq(discountCodes.code, discount.code));
+      }
+      const charge = applyDiscount(priced.totalCents, discount?.percentOff ?? 0);
+
+      // Payment for charge.totalCents would be authorized here (mocked in this demo;
+      // nothing is charged when it's $0).
 
       // Seats must still be held by this hold and unexpired. All or nothing.
       const booked = await tx.execute(sql`
@@ -178,7 +196,9 @@ export async function confirmHold(input: {
           holdId: hold.id,
           email: input.email,
           customerName: input.customerName ?? null,
-          totalCents: priced.totalCents,
+          totalCents: charge.totalCents,
+          discountCode: discount?.code ?? null,
+          discountCents: charge.discountCents,
         })
         .returning();
       if (!booking) throw new Error("Failed to create booking");

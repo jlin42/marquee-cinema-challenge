@@ -1,6 +1,8 @@
 "use client";
 
-import { IconButton } from "@/components/ui/icon-button";
+import Link from "next/link";
+import { Icon } from "@/components/ui/icon";
+import { focusRing, IconButton } from "@/components/ui/icon-button";
 import { FilmSlide } from "./film-slide";
 import type { FilmSlideVM } from "./home-view-model";
 import { useCarousel } from "./use-carousel";
@@ -31,7 +33,16 @@ export function FilmCarousel({ slides }: { slides: FilmSlideVM[] }) {
       ))}
 
       <div className="absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-6 px-6 pb-8 sm:px-12 lg:px-20">
-        <SlideTabs slides={slides} index={carousel.index} isPaused={carousel.isPaused} onSelect={carousel.goTo} />
+        <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
+          <SlideTabs slides={slides} index={carousel.index} isPaused={carousel.isPaused} onSelect={carousel.goTo} />
+          <Link
+            href="/movies"
+            className={`group inline-flex shrink-0 items-center gap-1.5 self-start text-sm font-medium text-white underline decoration-white/40 underline-offset-4 transition hover:text-marquee-400 hover:decoration-marquee-400 sm:self-auto ${focusRing}`}
+          >
+            More movies &amp; times
+            <Icon name="arrow-right" className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </div>
         <div className="flex shrink-0 items-center gap-2">
           <IconButton
             icon={carousel.isUserPaused ? "play" : "pause"}
@@ -59,7 +70,7 @@ function SlideTabs({
   onSelect: (i: number) => void;
 }) {
   return (
-    <div className="flex flex-1 gap-3" role="tablist" aria-label="Choose a film">
+    <div className="flex min-w-0 flex-1 gap-3 sm:max-w-[60rem]" role="tablist" aria-label="Choose a film">
       {slides.map((slide, i) => {
         const isActive = i === index;
         return (

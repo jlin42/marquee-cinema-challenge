@@ -6,7 +6,8 @@
 import "dotenv/config";
 import { sql } from "drizzle-orm";
 import { db, pool } from "./client";
-import { films, locations, screens, seats, showings, ticketTypes } from "./schema";
+import { randomBytes } from "node:crypto";
+import { discountCodes, films, locations, screens, seats, showings, ticketTypes } from "./schema";
 import { CINEMA_TIME_ZONE, cinemaDate } from "../lib/time";
 import { LAYOUTS, parseLayout, type LayoutName } from "./layouts";
 import { seedStaff } from "./seed-staff";
@@ -76,7 +77,7 @@ async function main() {
   console.log("Clearing existing data…");
   await db.execute(sql`
     TRUNCATE booking_seats, bookings, showing_seats, holds, showings, films, seats, screens,
-             staff_actions, staff_sessions, staff_users, locations, ticket_types
+             staff_actions, staff_sessions, staff_users, locations, ticket_types, discount_codes
     RESTART IDENTITY CASCADE
   `);
 
@@ -85,6 +86,15 @@ async function main() {
     { code: "general", label: "General", description: null, priceCents: 1475, feeCents: 199, sortOrder: 1 },
     { code: "child", label: "Child", description: "3–11 years", priceCents: 1175, feeCents: 199, sortOrder: 2 },
     { code: "senior", label: "Senior", description: "60+ years", priceCents: 1125, feeCents: 199, sortOrder: 3 },
+  ]);
+
+  // Discount codes. The 100% comp code comes from .env (gitignored), or is generated and
+  // printed, so a free-tickets code never sits in the repo.
+  const compCode = (process.env.COMP_DISCOUNT_CODE || `COMP-${randomBytes(4).toString("hex")}`).trim().toUpperCase();
+  await db.insert(discountCodes).values([
+    { code: compCode, description: "Staff comp", percentOff: 100 },
+    { code: "MATINEE20", description: "Matinee special", percentOff: 20 },
+    { code: "EXPIRED10", description: "Summer promo", percentOff: 10, expiresAt: new Date("2026-09-01T00:00:00Z") },
   ]);
 
   const insertedLocations = await db
@@ -309,6 +319,10 @@ async function main() {
     "Other staff accounts use " +
       (staff.demoPassword ? `the password: ${staff.demoPassword}` : "STAFF_DEMO_PASSWORD from .env") +
       " (usernames are on the Admin tab).",
+  );
+  console.log(
+    `Discount codes: ${process.env.COMP_DISCOUNT_CODE ? "COMP_DISCOUNT_CODE from .env" : compCode} (100% off), ` +
+      "MATINEE20 (20% off), EXPIRED10 (expired, for testing).",
   );
 }
 

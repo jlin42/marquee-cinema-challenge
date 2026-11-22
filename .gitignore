@@ -19,3 +19,6 @@ notes/
 
 # Claude desktop scratch output
 Claude outputs/
+
+# Local HTTPS dev certificates (npm run dev:https)
+/certificates

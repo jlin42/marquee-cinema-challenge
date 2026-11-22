@@ -22,6 +22,8 @@ export type FeaturedFilm = {
 };
 
 const SHOWINGS_PER_FILM = 4;
+/** The home-page carousel shows at most this many films (lowest featured_rank first). */
+export const FEATURED_LIMIT = 5;
 
 /**
  * Films in the home-page carousel, in rank order, each with its next few
@@ -42,7 +44,8 @@ export async function listFeaturedFilms(locationId?: string): Promise<FeaturedFi
     })
     .from(films)
     .where(isNotNull(films.featuredRank))
-    .orderBy(asc(films.featuredRank));
+    .orderBy(asc(films.featuredRank))
+    .limit(FEATURED_LIMIT);
   if (featured.length === 0) return [];
 
   const upcoming = await db

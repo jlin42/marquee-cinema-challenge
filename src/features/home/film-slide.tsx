@@ -26,7 +26,7 @@ export function FilmSlide({ slide, position, total, isActive }: { slide: FilmSli
       <div className="absolute inset-0 bg-linear-to-r from-black/90 via-black/55 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 h-2/3 bg-linear-to-t from-black via-black/60 to-transparent" />
 
-      <div className="relative flex h-full flex-col justify-end px-6 pb-32 sm:px-12 lg:px-20">
+      <div className="relative flex h-full flex-col justify-end px-6 pb-40 sm:px-12 sm:pb-32 lg:px-20">
         {/*
           Text leaves quickly as the backdrop starts to change, and the new film's text
           comes in half a second later, once the new backdrop is mostly in.

@@ -12,6 +12,7 @@ import { db, pool } from "@/db/client";
 import {
   bookingSeats,
   bookings,
+  discountCodes,
   films,
   holds,
   locations,
@@ -22,7 +23,7 @@ import {
   ticketTypes,
 } from "@/db/schema";
 import { confirmHold, createHold, getSeatMap, releaseHold } from "@/server/booking";
-import { HoldExpiredError, HoldNotFoundError, SeatConflictError, isUniqueViolation } from "@/server/errors";
+import { HoldExpiredError, HoldNotFoundError, InvalidDiscountError, SeatConflictError, isUniqueViolation } from "@/server/errors";
 
 const createdShowings: string[] = [];
 const createdScreens: string[] = [];
@@ -59,6 +60,7 @@ async function makeShowing(seatCount = 8) {
 }
 
 const session = () => `test-session-${randomUUID()}`;
+const createdCodes: string[] = [];
 
 // Confirming prices tickets from the price list, so make sure it exists.
 beforeAll(async () => {
@@ -89,6 +91,7 @@ afterAll(async () => {
     await db.delete(locations).where(inArray(locations.id, createdLocations));
     await db.delete(films).where(inArray(films.id, createdFilms));
   }
+  if (createdCodes.length) await db.delete(discountCodes).where(inArray(discountCodes.code, createdCodes));
   await pool.end();
 });
 
@@ -214,5 +217,45 @@ describe("database backstop", () => {
         (e: unknown) => e,
       );
     expect(isUniqueViolation(err)).toBe(true);
+  });
+});
+
+describe("discount codes", () => {
+  it("applies the code on the server and records it on the booking", async () => {
+    const code = `TEST-${randomUUID().slice(0, 8).toUpperCase()}`;
+    createdCodes.push(code);
+    await db.insert(discountCodes).values({ code, description: "Test", percentOff: 100 });
+
+    const sid = session();
+    const hold = await createHold({ showingId: fx.showingId, seatIds: fx.seatIds.slice(0, 2), sessionId: sid });
+    const booking = await confirmHold({ holdId: hold.id, sessionId: sid, email: "a@example.com", discountCode: code });
+    expect(booking.totalCents).toBe(0);
+    expect(booking.discountCents).toBe(2 * 1674);
+    expect(booking.discountCode).toBe(code);
+  });
+
+  it("a single-use code can't be redeemed twice, even concurrently", async () => {
+    const code = `ONCE-${randomUUID().slice(0, 8).toUpperCase()}`;
+    createdCodes.push(code);
+    await db.insert(discountCodes).values({ code, description: "Test", percentOff: 50, maxRedemptions: 1 });
+
+    const attempts = await Promise.allSettled(
+      fx.seatIds.slice(0, 4).map(async (seatId) => {
+        const sid = session();
+        const hold = await createHold({ showingId: fx.showingId, seatIds: [seatId], sessionId: sid });
+        return confirmHold({ holdId: hold.id, sessionId: sid, email: "a@example.com", discountCode: code });
+      }),
+    );
+    expect(attempts.filter((a) => a.status === "fulfilled")).toHaveLength(1);
+    for (const a of attempts) if (a.status === "rejected") expect(a.reason).toBeInstanceOf(InvalidDiscountError);
+  });
+
+  it("rejects an unknown code and books nothing", async () => {
+    const sid = session();
+    const hold = await createHold({ showingId: fx.showingId, seatIds: [fx.seatIds[0]!], sessionId: sid });
+    await expect(
+      confirmHold({ holdId: hold.id, sessionId: sid, email: "a@example.com", discountCode: "NOPE" }),
+    ).rejects.toBeInstanceOf(InvalidDiscountError);
+    expect(await db.select().from(bookings).where(eq(bookings.holdId, hold.id))).toHaveLength(0);
   });
 });

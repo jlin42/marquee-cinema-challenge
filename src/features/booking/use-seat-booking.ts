@@ -2,20 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatCents } from "@/lib/money";
-import { bookingApi, type ApiBooking, type ApiHold, type TicketCode } from "./booking-api";
+import { useRouter } from "next/navigation";
+import { bookingApi, type ApiDiscount, type ApiHold, type TicketCode } from "./booking-api";
 import type { TicketOptionVM } from "./booking-view-model";
 import { seatLabels, toSeatLayout, type SeatLayoutVM, type SeatVM } from "./seat-model";
 
 const REFRESH_MS = 5000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export type BookingPhase = "select" | "checkout" | "confirmed";
+export type BookingPhase = "select" | "checkout";
 export type Notice = { tone: "info" | "error"; text: string } | null;
 export type TicketLineVM = { seatId: string; seat: string; ticket: string; amount: string };
 
 /**
  * View-model hook for booking seats: pick seats (and who sits in each) → hold
- * (checkout) → confirm. The server is the source of truth for seat states and
+ * (checkout, with an optional discount code) → confirm → the ticket page. The server is the source of truth for seat states and
  * prices; the totals shown here are previews of what the server will charge.
  */
 export function useSeatBooking({
@@ -43,7 +44,7 @@ export function useSeatBooking({
   // "Save seat preference": once set, new seats are selected with this type without asking.
   const [preferredType, setPreferredType] = useState<TicketCode | null>(null);
   const [hold, setHold] = useState<ApiHold | null>(initialHold);
-  const [booking, setBooking] = useState<ApiBooking | null>(null);
+  const router = useRouter();
   const [notice, setNotice] = useState<Notice>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [hasConfirmedTheater, setHasConfirmedTheater] = useState(theaterConfirmed || initialHold != null);
@@ -121,19 +122,28 @@ export function useSeatBooking({
   }, [tickets, layout.seats, optionByCode]);
   const totalCents = tickets.reduce((sum, [, type]) => sum + (optionByCode.get(type)?.totalCents ?? 0), 0);
 
-  /** The confirmed booking's lines, with the prices the server actually charged. */
-  const paidLines: TicketLineVM[] = useMemo(() => {
-    if (!booking) return [];
-    const labels = new Map(layout.seats.map((s) => [s.id, s.label]));
-    return booking.tickets
-      .map((t) => ({
-        seatId: t.seatId,
-        seat: labels.get(t.seatId) ?? "",
-        ticket: optionByCode.get(t.ticketType)?.label ?? t.ticketType,
-        amount: formatCents(t.priceCents + t.feeCents),
-      }))
-      .sort((a, b) => a.seat.localeCompare(b.seat, undefined, { numeric: true }));
-  }, [booking, layout.seats, optionByCode]);
+  // ----- Discount (preview; the server applies it again when booking) -----
+
+  const [discount, setDiscount] = useState<ApiDiscount | null>(null);
+  const [discountError, setDiscountError] = useState<string | null>(null);
+  const [isCheckingDiscount, setIsCheckingDiscount] = useState(false);
+
+  const applyDiscount = async (code: string) => {
+    if (!code.trim() || isCheckingDiscount) return;
+    setIsCheckingDiscount(true);
+    setDiscountError(null);
+    const res = await bookingApi.checkDiscount(code.trim());
+    setIsCheckingDiscount(false);
+    if (res.ok) setDiscount(res.data.discount);
+    else setDiscountError(res.error.code === "DISCOUNT_INVALID" ? res.error.message : "Couldn't check that code. Please try again.");
+  };
+  const removeDiscount = () => {
+    setDiscount(null);
+    setDiscountError(null);
+  };
+
+  const discountCents = discount ? Math.min(totalCents, Math.round((totalCents * discount.percentOff) / 100)) : 0;
+  const dueCents = totalCents - discountCents;
 
   // ----- Hold, release, expiry, confirm -----
 
@@ -179,7 +189,8 @@ export function useSeatBooking({
     void refresh();
   }, [refresh]);
 
-  const confirm = async (name: string, email: string) => {
+  /** `paymentReady`: the (mock) card form is complete, or nothing is due. */
+  const confirm = async (name: string, email: string, paymentReady: boolean) => {
     if (!hold || isBusy) return;
     if (!name.trim()) {
       setNotice({ tone: "error", text: "Enter the name of the person booking." });
@@ -189,15 +200,28 @@ export function useSeatBooking({
       setNotice({ tone: "error", text: "Enter a valid email address for your tickets." });
       return;
     }
+    if (dueCents > 0 && !paymentReady) {
+      setNotice({ tone: "error", text: "Check your card details." });
+      return;
+    }
     setIsBusy(true);
     setNotice(null);
-    const res = await bookingApi.confirm(hold.id, { name: name.trim(), email: email.trim() }, Object.fromEntries(tickets));
-    setIsBusy(false);
+    const res = await bookingApi.confirm(
+      hold.id,
+      { name: name.trim(), email: email.trim() },
+      Object.fromEntries(tickets),
+      discount?.code,
+    );
 
     if (res.ok) {
-      setBooking(res.data.booking);
-      setPhase("confirmed");
+      // The ticket lives on its own page (stays busy while it loads).
+      router.push(`/bookings/${res.data.booking.id}`);
       return;
+    }
+    setIsBusy(false);
+    if (res.error.code === "DISCOUNT_INVALID") {
+      setDiscount(null);
+      setDiscountError(res.error.message);
     }
     if (res.error.code === "HOLD_EXPIRED") return onHoldExpired();
     setNotice({ tone: "error", text: res.error.message });
@@ -217,10 +241,14 @@ export function useSeatBooking({
     clearPreference,
     lines,
     total: formatCents(totalCents),
-    paidLines,
-    paidTotal: booking ? formatCents(booking.totalCents) : null,
+    discount: discount ? { code: discount.code, label: `${discount.description} · ${discount.percentOff}% off`, amount: `−${formatCents(discountCents)}` } : null,
+    discountError,
+    isCheckingDiscount,
+    applyDiscount,
+    removeDiscount,
+    amountDue: formatCents(dueCents),
+    isFree: dueCents === 0,
     hold,
-    booking,
     notice,
     isBusy,
     maxSeats,

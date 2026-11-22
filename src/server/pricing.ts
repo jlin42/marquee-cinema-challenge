@@ -11,6 +11,13 @@ export async function listTicketTypes(conn: Pick<typeof db, "select"> = db): Pro
   return conn.select().from(ticketTypes).orderBy(asc(ticketTypes.sortOrder));
 }
 
+/** Percent off the whole order, rounded to the nearest cent; never below $0. */
+export function applyDiscount(subtotalCents: number, percentOff: number) {
+  const pct = Math.min(100, Math.max(0, percentOff));
+  const discountCents = Math.min(subtotalCents, Math.round((subtotalCents * pct) / 100));
+  return { subtotalCents, discountCents, totalCents: subtotalCents - discountCents };
+}
+
 export type PricedTicket = { seatId: string; ticketType: TicketTypeCode; priceCents: number; feeCents: number };
 
 /**

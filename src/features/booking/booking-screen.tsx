@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { focusRing } from "@/components/ui/icon-button";
-import { BookingConfirmation } from "./booking-confirmation";
+import { StepLoaderOverlay } from "@/components/ui/loader";
 import type { BookingVM } from "./booking-view-model";
 import { CheckoutPanel } from "./checkout-panel";
 import { ConfirmTheaterDialog } from "./confirm-theater-dialog";
@@ -12,7 +12,7 @@ import { ShowtimePicker } from "./showtime-picker";
 import { TicketTypeDialog } from "./ticket-type-dialog";
 import { useSeatBooking, type Notice } from "./use-seat-booking";
 
-/** View: the booking flow for one showing (choose seats → checkout → confirmed). */
+/** View: the booking flow for one showing (choose seats → checkout; the ticket is its own page). */
 export function BookingScreen({ vm }: { vm: BookingVM }) {
   const booking = useSeatBooking({
     showingId: vm.showingId,
@@ -26,6 +26,11 @@ export function BookingScreen({ vm }: { vm: BookingVM }) {
   return (
     <main className="pb-32">
       <ShowingHeader vm={vm} />
+      {/* Moving to the next step: holding seats, then booking (stays up until the ticket page loads). */}
+      <StepLoaderOverlay
+        isOpen={booking.isBusy}
+        caption={booking.phase === "select" ? "Holding your seats…" : "Booking your tickets…"}
+      />
 
       <div className="mx-auto max-w-5xl px-4 sm:px-8">
         {booking.phase === "select" && (
@@ -39,17 +44,6 @@ export function BookingScreen({ vm }: { vm: BookingVM }) {
           <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-12 text-center text-neutral-300">
             This showing has already started, so it can’t be booked online.
           </p>
-        ) : booking.phase === "confirmed" && booking.booking ? (
-          <BookingConfirmation
-            reference={booking.booking.id.slice(0, 8).toUpperCase()}
-            name={booking.booking.customerName}
-            email={booking.booking.email}
-            lines={booking.paidLines}
-            total={booking.paidTotal ?? ""}
-            filmTitle={vm.film.title}
-            when={vm.when}
-            where={vm.where}
-          />
         ) : (
           <div className="flex flex-col gap-10">
             <div>
@@ -66,6 +60,15 @@ export function BookingScreen({ vm }: { vm: BookingVM }) {
               <CheckoutPanel
                 lines={booking.lines}
                 total={booking.total}
+                amountDue={booking.amountDue}
+                isFree={booking.isFree}
+                discount={{
+                  applied: booking.discount,
+                  error: booking.discountError,
+                  isChecking: booking.isCheckingDiscount,
+                  onApply: booking.applyDiscount,
+                  onRemove: booking.removeDiscount,
+                }}
                 expiresAt={booking.hold.expiresAt}
                 isBusy={booking.isBusy}
                 onConfirm={booking.confirm}

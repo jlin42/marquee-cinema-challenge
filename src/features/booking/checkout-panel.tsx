@@ -4,12 +4,26 @@ import { useState, type FormEvent } from "react";
 import { Icon } from "@/components/ui/icon";
 import { focusRing } from "@/components/ui/icon-button";
 import { useCountdown } from "@/hooks/use-countdown";
+import { DiscountField } from "./discount-field";
+import { PaymentFields } from "./payment-fields";
+import { useMockCard } from "./use-mock-card";
 import type { TicketLineVM } from "./use-seat-booking";
 
-/** View: hold countdown, chosen seats, email, and the (demo) payment button. */
+export type CheckoutDiscountVM = {
+  applied: { code: string; label: string; amount: string } | null;
+  error: string | null;
+  isChecking: boolean;
+  onApply: (code: string) => void;
+  onRemove: () => void;
+};
+
+/** View: hold countdown, tickets, booker details, discount code, (demo) payment, book. */
 export function CheckoutPanel({
   lines,
   total,
+  amountDue,
+  isFree,
+  discount,
   expiresAt,
   isBusy,
   onConfirm,
@@ -18,12 +32,16 @@ export function CheckoutPanel({
 }: {
   lines: TicketLineVM[];
   total: string;
+  amountDue: string;
+  isFree: boolean;
+  discount: CheckoutDiscountVM;
   expiresAt: string;
   isBusy: boolean;
-  onConfirm: (name: string, email: string) => void;
+  onConfirm: (name: string, email: string, paymentReady: boolean) => void;
   onChangeSeats: () => void;
   onExpired: () => void;
 }) {
+  const card = useMockCard();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const countdown = useCountdown(expiresAt, onExpired);
@@ -31,7 +49,8 @@ export function CheckoutPanel({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    onConfirm(name, email);
+    // Nothing to pay (e.g. a 100% code): skip the card entirely.
+    onConfirm(name, email, isFree || card.validate());
   };
 
   return (
@@ -57,7 +76,12 @@ export function CheckoutPanel({
         </p>
       </div>
 
-      <TicketLines lines={lines} total={total} />
+      <TicketLines
+        lines={lines}
+        total={discount.applied ? amountDue : total}
+        subtotal={discount.applied ? total : undefined}
+        discount={discount.applied ? { label: `Discount (${discount.applied.code})`, amount: discount.applied.amount } : undefined}
+      />
 
       <p className="mt-4 text-sm text-neutral-400">These seats are held for you until the timer runs out.</p>
 
@@ -88,14 +112,32 @@ export function CheckoutPanel({
           />
         </label>
 
+        <DiscountField
+          applied={discount.applied}
+          error={discount.error}
+          isChecking={discount.isChecking}
+          onApply={discount.onApply}
+          onRemove={discount.onRemove}
+        />
+
+        <div className="mt-2 border-t border-white/10 pt-5">
+          {isFree ? (
+            <p className="flex items-center gap-2 rounded-lg bg-white/[0.04] px-3 py-3 text-sm text-neutral-300">
+              <Icon name="check" className="h-4 w-4 shrink-0 text-marquee-400" />
+              No payment needed: your discount covers the whole order.
+            </p>
+          ) : (
+            <PaymentFields card={card} />
+          )}
+        </div>
+
         <button
           type="submit"
           disabled={isBusy}
-          className={`rounded-lg bg-marquee-500 px-4 py-3 text-sm font-semibold text-neutral-950 transition hover:bg-marquee-400 disabled:opacity-60 ${focusRing}`}
+          className={`mt-1 rounded-lg bg-marquee-500 px-4 py-3 text-sm font-semibold text-neutral-950 transition hover:bg-marquee-400 disabled:opacity-60 ${focusRing}`}
         >
-          {isBusy ? "Booking…" : `Pay ${total} and book`}
+          {isBusy ? "Booking…" : isFree ? `Book for ${amountDue}` : `Pay ${amountDue} and book`}
         </button>
-        <p className="text-center text-xs text-neutral-500">Demo: no payment is taken.</p>
       </form>
 
       <button
@@ -110,8 +152,18 @@ export function CheckoutPanel({
   );
 }
 
-/** View: one line per ticket (seat, type, price incl. fee) and the total. */
-export function TicketLines({ lines, total }: { lines: TicketLineVM[]; total: string }) {
+/** View: one line per ticket (seat, type, price incl. fee), any discount, and the total. */
+export function TicketLines({
+  lines,
+  total,
+  subtotal,
+  discount,
+}: {
+  lines: TicketLineVM[];
+  total: string;
+  subtotal?: string;
+  discount?: { label: string; amount: string };
+}) {
   return (
     <dl className="mt-5 divide-y divide-white/10 border-y border-white/10 text-sm">
       {lines.map((l) => (
@@ -123,8 +175,20 @@ export function TicketLines({ lines, total }: { lines: TicketLineVM[]; total: st
           <dd className="tabular-nums text-neutral-200">{l.amount}</dd>
         </div>
       ))}
+      {subtotal && discount && (
+        <div className="py-2.5">
+          <div className="flex items-center justify-between text-neutral-400">
+            <dt>Subtotal (incl. fees)</dt>
+            <dd className="tabular-nums">{subtotal}</dd>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-marquee-400">
+            <dt>{discount.label}</dt>
+            <dd className="tabular-nums">{discount.amount}</dd>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between py-3">
-        <dt className="font-semibold text-white">Total (incl. fees)</dt>
+        <dt className="font-semibold text-white">{discount ? "Total" : "Total (incl. fees)"}</dt>
         <dd className="text-base font-semibold tabular-nums text-white">{total}</dd>
       </div>
     </dl>

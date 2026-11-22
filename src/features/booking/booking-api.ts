@@ -14,8 +14,12 @@ export type ApiBooking = {
   seatIds: string[];
   tickets: { seatId: string; ticketType: TicketCode; priceCents: number; feeCents: number }[];
   totalCents: number;
+  discountCode: string | null;
+  discountCents: number;
+  confirmationCode: string;
   createdAt: string;
 };
+export type ApiDiscount = { code: string; description: string; percentOff: number };
 export type ApiError = { code: string; message: string; seatIds?: string[] };
 
 export type Result<T> = { ok: true; data: T } | { ok: false; status: number; error: ApiError };
@@ -49,10 +53,22 @@ export const bookingApi = {
 
   release: (holdId: string) => request<void>(`/api/holds/${holdId}`, { method: "DELETE" }),
 
-  /** `tickets` maps seat id → ticket type; the server sets the prices. */
-  confirm: (holdId: string, booker: { name: string; email: string }, tickets: Record<string, TicketCode>) =>
+  /** Preview a discount code (the server applies it again when booking). */
+  checkDiscount: (code: string) =>
+    request<{ discount: ApiDiscount }>("/api/discounts/check", { method: "POST", body: JSON.stringify({ code }) }),
+
+  /**
+   * `tickets` maps seat id → ticket type; the server sets the prices and applies the
+   * discount. No card details are sent (the payment is mocked in the browser).
+   */
+  confirm: (
+    holdId: string,
+    booker: { name: string; email: string },
+    tickets: Record<string, TicketCode>,
+    discountCode?: string,
+  ) =>
     request<{ booking: ApiBooking }>(`/api/holds/${holdId}/confirm`, {
       method: "POST",
-      body: JSON.stringify({ ...booker, tickets }),
+      body: JSON.stringify({ ...booker, tickets, discountCode }),
     }),
 };

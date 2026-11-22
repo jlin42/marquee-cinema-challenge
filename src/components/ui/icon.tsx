@@ -6,9 +6,28 @@ const PATHS = {
   pause: <path d="M9 5v14M15 5v14" />,
   play: <path d="M8 5v14l11-7z" fill="currentColor" stroke="none" />,
   "arrow-left": <path d="M19 12H5M12 19l-7-7 7-7" />,
+  "arrow-right": <path d="M5 12h14M12 5l7 7-7 7" />,
   check: <path d="M5 12l5 5L20 7" />,
   x: <path d="M18 6L6 18M6 6l12 12" />,
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </>
+  ),
+  tag: (
+    <>
+      <path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z" />
+      <circle cx="8" cy="8" r="1.5" />
+    </>
+  ),
+  card: (
+    <>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20M6 15h4" />
+    </>
+  ),
   clock: (
     <>
       <circle cx="12" cy="12" r="9" />

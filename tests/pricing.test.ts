@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { priceTickets, type TicketType } from "@/server/pricing";
+import { applyDiscount, priceTickets, type TicketType } from "@/server/pricing";
 
 const PRICE_LIST: TicketType[] = [
   { code: "general", label: "General", description: null, priceCents: 1475, feeCents: 199, sortOrder: 1 },
@@ -28,5 +28,20 @@ describe("priceTickets", () => {
 
   it("rejects a type missing from the price list", () => {
     expect(priceTickets(["a"], { a: "child" }, PRICE_LIST.filter((t) => t.code !== "child"))).toBeNull();
+  });
+});
+
+describe("applyDiscount", () => {
+  it("takes a percentage off the whole order, rounded to the cent", () => {
+    expect(applyDiscount(1674, 20)).toEqual({ subtotalCents: 1674, discountCents: 335, totalCents: 1339 });
+  });
+
+  it("100% makes the order free", () => {
+    expect(applyDiscount(5022, 100).totalCents).toBe(0);
+  });
+
+  it("never goes below zero or above 100%", () => {
+    expect(applyDiscount(1000, 150).totalCents).toBe(0);
+    expect(applyDiscount(1000, -5).totalCents).toBe(1000);
   });
 });
