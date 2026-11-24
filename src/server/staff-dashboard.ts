@@ -143,6 +143,7 @@ export async function getBookingForModify(bookingId: string) {
   const [booking] = await db
     .select({
       id: bookings.id,
+      confirmationCode: bookings.confirmationCode,
       customerName: bookings.customerName,
       email: bookings.email,
       showingId: bookings.showingId,

@@ -7,7 +7,7 @@ import type { BookingSearchVM } from "./dashboard-view-model";
 export function BookingSearch({ search }: { search: BookingSearchVM }) {
   return (
     <section aria-labelledby="find-title" className="flex flex-col gap-3">
-      <form action="/staff/dashboard" method="get" role="search" className="flex gap-2">
+      <form action="/staff/dashboard" method="get" role="search" className="flex w-full max-w-xl gap-2">
         <label htmlFor="find" id="find-title" className="sr-only">
           Find a booking
         </label>
@@ -18,7 +18,8 @@ export function BookingSearch({ search }: { search: BookingSearchVM }) {
             name="find"
             type="search"
             defaultValue={search.query}
-            placeholder={`Find a booking: ${search.hint.toLowerCase()}`}
+            placeholder={`Find a booking (${search.hint.toLowerCase()})`}
+            title={`Find a booking by ${search.hint.toLowerCase()}`}
             autoComplete="off"
             className="w-full rounded-lg border border-white/15 bg-neutral-900 py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-neutral-500 focus:border-marquee-400 focus:outline-none"
           />
@@ -34,7 +35,7 @@ export function BookingSearch({ search }: { search: BookingSearchVM }) {
       </form>
 
       {search.query.length >= 2 && (
-        <div className="rounded-xl border border-white/10">
+        <div className="max-w-3xl rounded-xl border border-white/10">
           <p className="border-b border-white/10 px-4 py-2.5 text-xs text-neutral-400">
             {search.results.length === 0
               ? `No bookings match “${search.query}”.`

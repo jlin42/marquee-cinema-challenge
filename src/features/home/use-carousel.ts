@@ -1,42 +1,49 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type TouchEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from "react";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
 const SWIPE_THRESHOLD_PX = 50;
 
 /**
  * View-model hook for an auto-advancing carousel.
- * Pauses on hover, focus, the pause button, reduced-motion, or with fewer than 2 slides.
+ * Only the pause button pauses it (hovering or focusing elsewhere on the page never
+ * does). Pausing freezes the countdown where it is and resuming continues from there.
+ * Reduced-motion or fewer than 2 slides: no auto-advance at all.
  */
 export function useCarousel(count: number, intervalMs: number) {
   const [index, setIndex] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
   const [isUserPaused, setIsUserPaused] = useState(false);
   const prefersReducedMotion = usePrefersReducedMotion();
   const touchStartX = useRef<number | null>(null);
 
-  const isPaused = isHovered || isUserPaused || prefersReducedMotion || count < 2;
+  /** Auto-advance is on at all (it can still be paused by the user). */
+  const autoAdvances = !prefersReducedMotion && count >= 2;
+  const isPaused = isUserPaused || !autoAdvances;
 
   const goTo = useCallback((i: number) => setIndex(((i % count) + count) % count), [count]);
   const next = useCallback(() => goTo(index + 1), [goTo, index]);
   const prev = useCallback(() => goTo(index - 1), [goTo, index]);
   const togglePause = useCallback(() => setIsUserPaused((p) => !p), []);
 
+  // Time left on the current slide, so a pause/resume continues instead of restarting.
+  const remaining = useRef(intervalMs);
+  useEffect(() => {
+    remaining.current = intervalMs; // a new slide gets the full interval
+  }, [index, intervalMs]);
+
   useEffect(() => {
     if (isPaused) return;
-    const timer = window.setTimeout(next, intervalMs);
-    return () => window.clearTimeout(timer);
-  }, [isPaused, next, intervalMs]);
+    const startedAt = Date.now();
+    const timer = window.setTimeout(next, remaining.current);
+    return () => {
+      window.clearTimeout(timer);
+      remaining.current = Math.max(0, remaining.current - (Date.now() - startedAt));
+    };
+  }, [isPaused, next]);
 
   /** Spread onto the carousel's root element. */
   const rootHandlers = {
-    onMouseEnter: () => setIsHovered(true),
-    onMouseLeave: () => setIsHovered(false),
-    onFocus: () => setIsHovered(true),
-    onBlur: (e: FocusEvent<HTMLElement>) => {
-      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsHovered(false);
-    },
     onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
       if (e.key === "ArrowRight") next();
       if (e.key === "ArrowLeft") prev();
@@ -54,5 +61,5 @@ export function useCarousel(count: number, intervalMs: number) {
     },
   };
 
-  return { index, isPaused, isUserPaused, goTo, next, prev, togglePause, rootHandlers };
+  return { index, isPaused, isUserPaused, autoAdvances, goTo, next, prev, togglePause, rootHandlers };
 }

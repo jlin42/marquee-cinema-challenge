@@ -7,7 +7,8 @@ import type { ModifyingVM, StaffMoviesVM } from "./staff-movies-view-model";
 /** View: staff Movies tab: theater, date strip, and every film's showtimes. */
 export function StaffMoviesScreen({ vm }: { vm: StaffMoviesVM }) {
   return (
-    <div className="flex flex-col gap-6">
+    // Same reading width as the customer Movies page.
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       {vm.modifying && <ModifyBanner modifying={vm.modifying} />}
 
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -25,7 +26,14 @@ export function StaffMoviesScreen({ vm }: { vm: StaffMoviesVM }) {
       ) : (
         <ul className="flex flex-col gap-4">
           {vm.films.map((f) => (
-            <li key={f.id} className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+            <li key={f.id} className="flex overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
+              <div className="relative w-24 shrink-0 bg-black sm:w-36">
+                {f.posterUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element -- local SVG art
+                  <img src={f.posterUrl} alt="" className="absolute inset-0 h-full w-full object-cover object-[78%_50%]" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 p-5">
               <p className="text-lg font-semibold text-white">{f.title}</p>
               <p className="text-sm text-neutral-400">{f.meta}</p>
               <ul className="mt-4 flex flex-wrap gap-2">
@@ -43,6 +51,7 @@ export function StaffMoviesScreen({ vm }: { vm: StaffMoviesVM }) {
                   </li>
                 ))}
               </ul>
+              </div>
             </li>
           ))}
         </ul>

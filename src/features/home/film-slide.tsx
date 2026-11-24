@@ -32,11 +32,15 @@ export function FilmSlide({ slide, position, total, isActive }: { slide: FilmSli
           comes in half a second later, once the new backdrop is mostly in.
         */}
         <div
-          className={`max-w-2xl transition-[opacity,transform] motion-reduce:translate-y-0 ${
-            isActive
-              ? "translate-y-0 opacity-100 delay-500 duration-700 ease-out"
-              : "translate-y-3 opacity-0 delay-0 duration-300 ease-in"
-          }`}
+          className={`max-w-2xl motion-reduce:translate-y-0 ${isActive ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"}`}
+          style={{
+            // Leaving: fade out in place, then drop to the start position once invisible
+            // (so it never visibly dips). Arriving: after 0.5 s, fade in while rising. Tailwind's
+            // translate-y-* sets the `translate` property, so that's what transitions here.
+            transition: isActive
+              ? "opacity 700ms ease-out 500ms, translate 700ms ease-out 500ms"
+              : "opacity 300ms ease-in, translate 0s linear 300ms",
+          }}
         >
           <MetaLine items={slide.meta} />
           <h2 className="font-display text-6xl leading-[0.9] tracking-wide text-white sm:text-8xl lg:text-9xl">{slide.title}</h2>

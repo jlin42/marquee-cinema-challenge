@@ -27,6 +27,12 @@ export function StaffSeatPicker({ vm }: { vm: StaffSeatPickerVM }) {
     else setError(`This booking has ${required} ${required === 1 ? "seat" : "seats"}. Deselect one first.`);
   };
 
+  // Not modifying yet: clicking a booked seat opens that booking for modifying here.
+  const openBooking = (seat: SeatVM) => {
+    const bookingId = vm.bookingBySeat[seat.id];
+    if (bookingId) router.push(`/staff/movies/${vm.showingId}?modify=${bookingId}`);
+  };
+
   const move = () =>
     startTransition(async () => {
       if (!vm.modifying) return;
@@ -52,7 +58,13 @@ export function StaffSeatPicker({ vm }: { vm: StaffSeatPickerVM }) {
       </div>
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-        <SeatMap layout={vm.layout} selectedIds={selected} interactive={Boolean(vm.modifying)} onToggle={toggle} />
+        <SeatMap
+          layout={vm.layout}
+          selectedIds={selected}
+          interactive={Boolean(vm.modifying)}
+          onToggle={toggle}
+          onTakenSeat={vm.modifying ? undefined : openBooking}
+        />
         <SeatLegend />
       </section>
 
@@ -72,7 +84,7 @@ export function StaffSeatPicker({ vm }: { vm: StaffSeatPickerVM }) {
           </button>
         </div>
       ) : (
-        <p className="text-sm text-neutral-400">To move a booking, choose Modify on it in the Dashboard.</p>
+        <p className="text-sm text-neutral-400">Click a booked seat to modify that booking.</p>
       )}
     </div>
   );

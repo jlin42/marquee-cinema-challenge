@@ -34,7 +34,13 @@ export function FilmCarousel({ slides }: { slides: FilmSlideVM[] }) {
 
       <div className="absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-6 px-6 pb-8 sm:px-12 lg:px-20">
         <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
-          <SlideTabs slides={slides} index={carousel.index} isPaused={carousel.isPaused} onSelect={carousel.goTo} />
+          <SlideTabs
+            slides={slides}
+            index={carousel.index}
+            isPaused={carousel.isPaused}
+            autoAdvances={carousel.autoAdvances}
+            onSelect={carousel.goTo}
+          />
           <Link
             href="/movies"
             className={`group inline-flex shrink-0 items-center gap-1.5 self-start text-sm font-medium text-white underline decoration-white/40 underline-offset-4 transition hover:text-marquee-400 hover:decoration-marquee-400 sm:self-auto ${focusRing}`}
@@ -62,11 +68,13 @@ function SlideTabs({
   slides,
   index,
   isPaused,
+  autoAdvances,
   onSelect,
 }: {
   slides: FilmSlideVM[];
   index: number;
   isPaused: boolean;
+  autoAdvances: boolean;
   onSelect: (i: number) => void;
 }) {
   return (
@@ -84,10 +92,18 @@ function SlideTabs({
           >
             <span className="relative h-0.5 w-full overflow-hidden rounded-full bg-white/20">
               {isActive && (
+                // Restarts only when the slide changes; pausing freezes it in place.
                 <span
-                  key={`${index}-${isPaused}`}
+                  key={index}
                   className="absolute inset-0 origin-left bg-marquee-400"
-                  style={isPaused ? undefined : { animation: `carousel-progress ${INTERVAL_MS}ms linear forwards` }}
+                  style={
+                    autoAdvances
+                      ? {
+                          animation: `carousel-progress ${INTERVAL_MS}ms linear forwards`,
+                          animationPlayState: isPaused ? "paused" : "running",
+                        }
+                      : undefined
+                  }
                 />
               )}
             </span>

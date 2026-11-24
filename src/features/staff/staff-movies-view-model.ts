@@ -1,8 +1,9 @@
+import { formatConfirmationCode } from "@/lib/confirmation-code";
 import { toDateChips, type DateChipVM } from "@/components/date-strip/date-chips";
 import { toSeatLayout, type SeatLayoutVM } from "@/features/booking/seat-model";
 import { getSeatMap } from "@/server/booking";
 import { listFilmsShowingOn, listShowDates } from "@/server/films";
-import { getBookingForModify, getShowingHeading, listAllLocations } from "@/server/staff-dashboard";
+import { getBookingForModify, getShowingHeading, getShowingSeatsWithBookings, listAllLocations } from "@/server/staff-dashboard";
 import { cinemaDate, cinemaDateFromToday, dateParts, formatTime } from "@/lib/time";
 import type { OptionVM } from "./dashboard-view-model";
 
@@ -18,6 +19,8 @@ export type StaffMoviesVM = {
     id: string;
     title: string;
     meta: string;
+    /** Film artwork, shown as a thumbnail. */
+    posterUrl: string | null;
     showtimes: { id: string; time: string; detail: string; href: string; isFull: boolean }[];
   }[];
 };
@@ -30,7 +33,7 @@ async function toModifying(bookingId?: string): Promise<(ModifyingVM & { showing
   if (!b) return null;
   return {
     bookingId: b.id,
-    reference: b.id.slice(0, 8).toUpperCase(),
+    reference: formatConfirmationCode(b.confirmationCode),
     customer: b.customerName ?? b.email,
     seatCount: b.seatIds.length,
     seats: b.seatLabels.join(", "),
@@ -60,6 +63,7 @@ export async function getStaffMoviesViewModel(params: { location?: string; date?
       id: f.id,
       title: f.title,
       meta: [f.rating, `${f.runtimeMinutes} min`, f.genre].filter(Boolean).join(" · "),
+      posterUrl: f.backdropUrl,
       showtimes: f.showtimes.map((s) => ({
         id: s.id,
         time: formatTime(s.startsAt),
@@ -81,6 +85,8 @@ export type StaffSeatPickerVM = {
   modifying: ModifyingVM | null;
   /** Seats preselected (the booking's current seats when it's in this showing). */
   initialSelection: string[];
+  /** Booked seat id → its booking id, so clicking a booked seat opens it for modifying. */
+  bookingBySeat: Record<string, string>;
 };
 
 /** Presenter for the staff seat picker. The booking's own seats count as choosable. */
@@ -90,7 +96,11 @@ export async function getStaffSeatPickerViewModel(showingId: string, modify?: st
   const modifying = await toModifying(modify);
   const date = cinemaDate(heading.startsAt);
 
-  const layout = toSeatLayout(await getSeatMap(showingId));
+  const [map, seatBookings] = await Promise.all([getSeatMap(showingId), getShowingSeatsWithBookings(showingId)]);
+  const layout = toSeatLayout(map);
+  const bookingBySeat = Object.fromEntries(
+    seatBookings.rows.filter((r) => r.status === "booked" && r.booking_id).map((r) => [r.seat_id, r.booking_id!]),
+  );
   const ownSeats = modifying && modifying.showingId === showingId ? modifying.seatIds : [];
   const seats = layout.seats.map((s) => (ownSeats.includes(s.id) ? { ...s, state: "available" as const } : s));
 
@@ -110,5 +120,6 @@ export async function getStaffSeatPickerViewModel(showingId: string, modify?: st
       current: modifying.current,
     },
     initialSelection: ownSeats,
+    bookingBySeat,
   };
 }

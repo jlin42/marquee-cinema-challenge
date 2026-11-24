@@ -10,11 +10,14 @@ export function SeatMap({
   selectedIds,
   interactive,
   onToggle,
+  onTakenSeat,
 }: {
   layout: SeatLayoutVM;
   selectedIds: string[];
   interactive: boolean;
   onToggle: (seat: SeatVM) => void;
+  /** Staff only: makes booked seats clickable (e.g. to open that booking). */
+  onTakenSeat?: (seat: SeatVM) => void;
 }) {
   const columns = `1.5rem repeat(${layout.columns}, minmax(0, 2rem)) 1.5rem`;
   // Rows without seats are cross-aisles: give them visible height.
@@ -36,6 +39,7 @@ export function SeatMap({
             isSelected={selectedIds.includes(seat.id)}
             interactive={interactive}
             onToggle={onToggle}
+            onTakenSeat={onTakenSeat}
           />
         ))}
       </div>
@@ -76,13 +80,16 @@ function SeatButton({
   isSelected,
   interactive,
   onToggle,
+  onTakenSeat,
 }: {
   seat: SeatVM;
   isSelected: boolean;
   interactive: boolean;
   onToggle: (seat: SeatVM) => void;
+  onTakenSeat?: (seat: SeatVM) => void;
 }) {
   const isTaken = seat.state === "taken";
+  const takenClickable = isTaken && Boolean(onTakenSeat);
   const isOurs = isSelected || seat.state === "mine";
   const status = isTaken ? "booked" : isOurs ? "selected" : "available";
   const isWheelchair = seat.kind === "wheelchair";
@@ -92,7 +99,7 @@ function SeatButton({
   const color = isOurs
     ? "bg-marquee-500 text-neutral-950"
     : isTaken
-      ? "scale-[0.72] bg-neutral-700 text-neutral-400"
+      ? `scale-[0.72] bg-neutral-700 text-neutral-400 ${takenClickable ? "cursor-pointer hover:scale-90 hover:bg-neutral-500 hover:text-white" : ""}`
       : isWheelchair
         ? `bg-access-blue text-white ${interactive ? "hover:bg-access-blue-hover" : ""}`
         : `bg-blue-500 text-blue-950 ${interactive ? "hover:bg-blue-400" : ""}`;
@@ -102,10 +109,10 @@ function SeatButton({
       id={seatElementId(seat.id)}
       type="button"
       role="gridcell"
-      aria-label={`Row ${seat.row}, seat ${seat.number}${KIND_NAME[seat.kind]}, ${status}`}
+      aria-label={`Row ${seat.row}, seat ${seat.number}${KIND_NAME[seat.kind]}, ${status}${takenClickable ? ", open booking" : ""}`}
       aria-pressed={isOurs}
-      disabled={isTaken || !interactive}
-      onClick={() => onToggle(seat)}
+      disabled={takenClickable ? false : isTaken || !interactive}
+      onClick={() => (isTaken ? onTakenSeat?.(seat) : onToggle(seat))}
       style={{ gridColumn: seat.x + 2, gridRow: seat.y + 1 }}
       className={`flex aspect-square w-full items-center justify-center rounded-t-lg rounded-b-sm transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed ${color} ${
         interactive && !isTaken ? "cursor-pointer" : ""
