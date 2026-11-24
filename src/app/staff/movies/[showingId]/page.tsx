@@ -23,8 +23,9 @@ export default async function StaffSeatPickerPage({
   if (!vm) notFound();
   return (
     <StaffShell activeHref="/staff/movies" staff={staff}>
-      {/* Keyed so switching showings starts a fresh selection. */}
-      <StaffSeatPicker key={vm.showingId} vm={vm} />
+      {/* Keyed by showing and booking: entering (or leaving) modify mode starts a fresh
+          selection, so the booking's seats show highlighted and Back resets it. */}
+      <StaffSeatPicker key={`${vm.showingId}:${vm.modifying?.bookingId ?? ""}`} vm={vm} />
     </StaffShell>
   );
 }

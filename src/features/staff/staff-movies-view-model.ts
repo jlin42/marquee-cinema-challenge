@@ -87,6 +87,8 @@ export type StaffSeatPickerVM = {
   initialSelection: string[];
   /** Booked seat id → its booking id, so clicking a booked seat opens it for modifying. */
   bookingBySeat: Record<string, string>;
+  /** While modifying: the day's showtimes, still in modify mode, to move to another time. */
+  otherShowtimesHref: string | null;
 };
 
 /** Presenter for the staff seat picker. The booking's own seats count as choosable. */
@@ -109,7 +111,8 @@ export async function getStaffSeatPickerViewModel(showingId: string, modify?: st
     title: heading.title,
     when: `${dateParts(date).long} · ${formatTime(heading.startsAt)}`,
     where: heading.where,
-    backHref: `/staff/movies?location=${heading.locationId}&date=${date}${modifying ? `&modify=${modifying.bookingId}` : ""}`,
+    // Going back to Movies ends modify mode (nothing changes unless the move was confirmed).
+    backHref: `/staff/movies?location=${heading.locationId}&date=${date}`,
     layout: { ...layout, seats },
     modifying: modifying && {
       bookingId: modifying.bookingId,
@@ -121,5 +124,6 @@ export async function getStaffSeatPickerViewModel(showingId: string, modify?: st
     },
     initialSelection: ownSeats,
     bookingBySeat,
+    otherShowtimesHref: modifying ? `/staff/movies?location=${heading.locationId}&date=${date}&modify=${modifying.bookingId}` : null,
   };
 }

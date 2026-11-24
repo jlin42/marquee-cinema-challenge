@@ -142,7 +142,7 @@ function BookingActions({ booking }: { booking: StaffBookingVM }) {
 
 function BookingDetail({ booking, canManage, onBack }: { booking: StaffBookingVM; canManage: boolean; onBack: () => void }) {
   return (
-    <section aria-labelledby="booking-detail-title" className="min-w-0">
+    <section aria-labelledby="booking-detail-title" className="w-full min-w-0 max-w-lg">
       <button
         type="button"
         onClick={onBack}
@@ -183,10 +183,10 @@ function BookingDetail({ booking, canManage, onBack }: { booking: StaffBookingVM
         </dl>
 
         <h3 className="mt-6 text-xs uppercase tracking-widest text-neutral-500">Tickets</h3>
-        <ul className="mt-2 divide-y divide-white/5 rounded-lg border border-white/10 text-sm">
+        <ul className="mt-2 max-w-xs divide-y divide-white/5 rounded-lg border border-white/10 text-sm">
           {booking.lines.map((l) => (
-            <li key={l.seat} className="flex justify-between px-4 py-2.5">
-              <span className="font-medium text-white">{l.seat}</span>
+            <li key={l.seat} className="flex items-baseline gap-4 px-4 py-2.5">
+              <span className="w-10 shrink-0 font-medium text-white">{l.seat}</span>
               <span className="text-neutral-300">{l.ticket}</span>
             </li>
           ))}

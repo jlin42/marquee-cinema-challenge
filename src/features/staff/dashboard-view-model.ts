@@ -144,7 +144,8 @@ export async function getDashboardViewModel(staff: StaffUser, input: DashboardPa
       ? await toShowingDetail(showing, {
           showContact: can(staff, "customers.contact"),
           canManage,
-          modifyBase: location ? `/staff/movies?location=${location.id}&date=${date}` : "/staff/movies",
+          // Modify opens this showing's seat map with the booking's seats selected.
+          modifyBase: `/staff/movies/${showing.id}?`,
         })
       : null,
   };
@@ -228,7 +229,7 @@ async function toShowingDetail(
       total: formatCents(b.totalCents),
       bookedAt: stamp(b.createdAt),
       isRecent: Date.now() - b.createdAt.getTime() < 24 * 3_600_000,
-      modifyHref: options.canManage ? `${options.modifyBase}&modify=${id}` : null,
+      modifyHref: options.canManage ? `${options.modifyBase}modify=${id}` : null,
     })),
   };
 }

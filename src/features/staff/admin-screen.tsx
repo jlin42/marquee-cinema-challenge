@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { focusRing } from "@/components/ui/icon-button";
 import type { AdminVM } from "./admin-view-model";
-import { LoadDemoData } from "./load-demo-data";
 import { StaffAccountsTable } from "./staff-accounts-table";
 
 /** View: the Admin tab (accounts with roles and status, and the action history). */
@@ -11,8 +10,6 @@ export function AdminScreen({ vm }: { vm: AdminVM }) {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       {vm.notice && <p role="status" className="rounded-lg border border-marquee-400/30 bg-marquee-500/10 px-4 py-3 text-sm text-marquee-400">{vm.notice}</p>}
       {vm.error && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{vm.error}</p>}
-
-      {vm.showDemoTools && <LoadDemoData />}
 
       <div className="grid gap-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         {/* Keyed by the saved state, so pending edits reset after a save. */}

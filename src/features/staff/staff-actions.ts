@@ -69,28 +69,3 @@ export async function applyStaffChangesAction(_prev: StaffChangesState, form: Fo
   revalidatePath("/staff", "layout");
   redirect("/staff/admin?notice=saved");
 }
-
-export type DemoDataState = { message: string | null; error: string | null };
-
-/** Demo tools run in development, or in a deployment that sets DEMO_TOOLS=1. */
-export async function demoToolsEnabled() {
-  return process.env.NODE_ENV !== "production" || process.env.DEMO_TOOLS === "1";
-}
-
-/**
- * Admin: fill the database with demo bookings (if it has none) and demo staff with their
- * action history (if the admin is the only account). Never deletes or changes existing data.
- */
-export async function loadDemoDataAction(_prev: DemoDataState): Promise<DemoDataState> {
-  await requireStaff("staff.manage");
-  if (!(await demoToolsEnabled())) return { message: null, error: "Demo tools are turned off here." };
-  try {
-    const { topUpDemoData } = await import("@/db/demo-data");
-    const result = await topUpDemoData();
-    revalidatePath("/", "layout");
-    return { message: `${result.demoBookings} ${result.demoStaff}`, error: null };
-  } catch (err) {
-    console.error(err);
-    return { message: null, error: err instanceof Error ? err.message : "Loading demo data failed." };
-  }
-}

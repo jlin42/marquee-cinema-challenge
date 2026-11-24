@@ -44,7 +44,8 @@ export function StaffSeatPicker({ vm }: { vm: StaffSeatPickerVM }) {
     });
 
   return (
-    <div className="flex flex-col gap-6">
+    // Same width as the Movies tab it belongs to.
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       {vm.modifying && <ModifyBanner modifying={vm.modifying} />}
       <div>
         <Link href={vm.backHref} className={`mb-3 inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-white ${focusRing}`}>
@@ -83,6 +84,11 @@ export function StaffSeatPicker({ vm }: { vm: StaffSeatPickerVM }) {
             {isPending ? "Moving…" : `Move booking ${vm.modifying.reference} here`}
           </button>
         </div>
+      ) : null}
+      {vm.modifying && vm.otherShowtimesHref ? (
+        <Link href={vm.otherShowtimesHref} className={`self-start text-sm text-neutral-400 underline underline-offset-4 hover:text-white ${focusRing}`}>
+          Move to a different showtime instead
+        </Link>
       ) : (
         <p className="text-sm text-neutral-400">Click a booked seat to modify that booking.</p>
       )}
