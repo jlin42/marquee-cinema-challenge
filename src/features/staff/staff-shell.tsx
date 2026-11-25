@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { focusRing } from "@/components/ui/icon-button";
-import { can, ROLE_LABEL } from "@/server/permissions";
+import { can, ROLE_LABEL } from "@/lib/permissions";
 import type { StaffUser } from "@/server/staff-auth";
 import { logoutAction } from "./auth-actions";
 

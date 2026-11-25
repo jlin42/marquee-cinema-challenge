@@ -1,47 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
 import { Icon } from "@/components/ui/icon";
 import { focusRing } from "@/components/ui/icon-button";
 import { SeatLegend, SeatMap } from "@/features/booking/seat-map";
-import type { SeatVM } from "@/features/booking/seat-model";
-import { moveBookingAction } from "./staff-actions";
 import { ModifyBanner } from "./staff-movies-screen";
 import type { StaffSeatPickerVM } from "./staff-movies-view-model";
+import { useStaffSeatPicker } from "./use-staff-seat-picker";
 
-/** View + view-model state: choose seats for the booking being modified, then move it. */
+/** View: the staff seat picker. State and server calls live in useStaffSeatPicker. */
 export function StaffSeatPicker({ vm }: { vm: StaffSeatPickerVM }) {
-  const router = useRouter();
-  const [selected, setSelected] = useState<string[]>(vm.initialSelection);
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const required = vm.modifying?.seatCount ?? 0;
-
-  const toggle = (seat: SeatVM) => {
-    if (!vm.modifying || seat.state === "taken") return;
-    setError(null);
-    if (selected.includes(seat.id)) setSelected(selected.filter((id) => id !== seat.id));
-    else if (selected.length < required) setSelected([...selected, seat.id]);
-    else setError(`This booking has ${required} ${required === 1 ? "seat" : "seats"}. Deselect one first.`);
-  };
-
-  // Not modifying yet: clicking a booked seat opens that booking for modifying here.
-  const openBooking = (seat: SeatVM) => {
-    const bookingId = vm.bookingBySeat[seat.id];
-    if (bookingId) router.push(`/staff/movies/${vm.showingId}?modify=${bookingId}`);
-  };
-
-  const move = () =>
-    startTransition(async () => {
-      if (!vm.modifying) return;
-      const result = await moveBookingAction({ bookingId: vm.modifying.bookingId, showingId: vm.showingId, seatIds: selected });
-      if (result?.error) {
-        setError(result.error);
-        router.refresh(); // pull fresh seat states
-      }
-    });
+  const { selected, required, error, isPending, canMove, toggle, openBooking, move } = useStaffSeatPicker(vm);
 
   return (
     // Same width as the Movies tab it belongs to.
@@ -78,7 +47,7 @@ export function StaffSeatPicker({ vm }: { vm: StaffSeatPickerVM }) {
           <button
             type="button"
             onClick={move}
-            disabled={selected.length !== required || isPending}
+            disabled={!canMove}
             className={`rounded-lg bg-marquee-500 px-5 py-2.5 text-sm font-semibold text-neutral-950 transition hover:bg-marquee-400 disabled:cursor-not-allowed disabled:opacity-40 ${focusRing}`}
           >
             {isPending ? "Moving…" : `Move booking ${vm.modifying.reference} here`}

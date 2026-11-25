@@ -1,8 +1,7 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { useTransition } from "react";
 import type { DashboardVM, OptionVM } from "./dashboard-view-model";
+import { useDashboardFilters } from "./use-dashboard-filters";
 
 /**
  * View: cinema / screen / date / showing pickers. Each change updates the URL, so a
@@ -10,14 +9,7 @@ import type { DashboardVM, OptionVM } from "./dashboard-view-model";
  * filter resets the narrower ones.
  */
 export function DashboardFilters({ filters }: { filters: DashboardVM["filters"] }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const [isPending, startTransition] = useTransition();
-
-  const go = (next: Partial<Record<"location" | "screen" | "date" | "showing", string>>) => {
-    const params = new URLSearchParams(Object.entries(next).filter(([, v]) => v) as [string, string][]);
-    startTransition(() => router.push(`${pathname}?${params}`));
-  };
+  const { go, isPending } = useDashboardFilters();
 
   return (
     <div className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-4 ${isPending ? "opacity-60" : ""}`} aria-busy={isPending}>

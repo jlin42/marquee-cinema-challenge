@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { focusRing } from "@/components/ui/icon-button";
-import { ROLE_LABEL } from "@/server/permissions";
+import { ROLE_LABEL } from "@/lib/permissions";
 import type { AdminVM } from "./admin-view-model";
 import { ConfirmStaffChangesDialog } from "./confirm-staff-changes-dialog";
 import { RoleSelect } from "./role-select";

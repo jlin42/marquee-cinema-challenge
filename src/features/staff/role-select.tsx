@@ -1,6 +1,6 @@
 "use client";
 
-import type { StaffRole } from "@/server/permissions";
+import type { StaffRole } from "@/lib/permissions";
 
 /** View: role dropdown. Controlled; changes stay pending until confirmed. */
 export function RoleSelect({

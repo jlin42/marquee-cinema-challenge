@@ -1,5 +1,5 @@
 import type { StaffUser } from "@/server/staff-auth";
-import { can, maskEmail } from "@/server/permissions";
+import { can, maskEmail } from "@/lib/permissions";
 import {
   getShowingSeatsWithBookings,
   listAllLocations,

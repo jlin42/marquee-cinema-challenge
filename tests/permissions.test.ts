@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, maskEmail, TRUST_MATRIX } from "@/server/permissions";
+import { can, maskEmail, TRUST_MATRIX } from "@/lib/permissions";
 
 describe("trust matrix", () => {
   it("admins can do everything", () => {

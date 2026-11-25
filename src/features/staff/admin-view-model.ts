@@ -1,4 +1,4 @@
-import { ROLE_LABEL, type StaffRole } from "@/server/permissions";
+import { ROLE_LABEL, type StaffRole } from "@/lib/permissions";
 import type { StaffUser } from "@/server/staff-auth";
 import { listActions, listStaffWithActivity } from "@/server/staff-admin";
 import { cinemaDate, dateParts, formatTime } from "@/lib/time";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ROLE_LABEL, type StaffRole } from "@/server/permissions";
+import { ROLE_LABEL, type StaffRole } from "@/lib/permissions";
 import type { AdminUserVM } from "./admin-view-model";
 
 type Pending = { role?: StaffRole; active?: boolean };
