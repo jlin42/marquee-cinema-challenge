@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from "react";
-import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
 const SWIPE_THRESHOLD_PX = 50;
 
@@ -9,16 +8,16 @@ const SWIPE_THRESHOLD_PX = 50;
  * View-model hook for an auto-advancing carousel.
  * Only the pause button pauses it (hovering or focusing elsewhere on the page never
  * does). Pausing freezes the countdown where it is and resuming continues from there.
- * Reduced-motion or fewer than 2 slides: no auto-advance at all.
+ * With reduced motion it still advances (only the pause button stops it, as the client
+ * asked); the slides just fade instead of moving. Fewer than 2 slides: no auto-advance.
  */
 export function useCarousel(count: number, intervalMs: number) {
   const [index, setIndex] = useState(0);
   const [isUserPaused, setIsUserPaused] = useState(false);
-  const prefersReducedMotion = usePrefersReducedMotion();
   const touchStartX = useRef<number | null>(null);
 
   /** Auto-advance is on at all (it can still be paused by the user). */
-  const autoAdvances = !prefersReducedMotion && count >= 2;
+  const autoAdvances = count >= 2;
   const isPaused = isUserPaused || !autoAdvances;
 
   const goTo = useCallback((i: number) => setIndex(((i % count) + count) % count), [count]);
